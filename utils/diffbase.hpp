@@ -6,6 +6,13 @@
 #include <cstdint>
 #include <cinttypes>
 
+#define ABS(num) ((num) >= 0 ? (num) : -(num))
+
+#define MILLION 1'000'000
+#define BILLION 1'000'000'000
+#define TRILLION 1'000'000'000'000
+#define QUADRILLION 1'000'000'000'000'000
+
 namespace diff {
     template <typename T>
     concept numeric = requires (T a, T b) {
@@ -32,6 +39,10 @@ namespace diff {
         }
     }
     template <numeric T>
+    inline T abs(const T &num) {
+        return num >= 0 ? num : -num;
+    }
+    template <numeric T>
     T integrate_trap(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
         if (!f)
             return 0;
@@ -42,6 +53,36 @@ namespace diff {
         while (i < num)
             res += (dx/2)*(f(a + i++*dx) + f(a + j++*dx));
         return res;
+    }
+    template <numeric T>
+    T trapquad_recurse(T (*f)(const T&), const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
+        T estimate = ((b - a)/2)*(f_a + f_b);
+        T midpoint = (a + b)/2;
+        T f_m = f(midpoint);
+        T res_or_tol = ((b - midpoint)/2)*(f_a + 2*f_m + f_b);
+        if (abs(res_or_tol - estimate) > tol) {
+            res_or_tol = tol/2;
+            return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
+                   trapquad_recurse(f, midpoint, b, res_or_tol, f_m, f_b);
+        }
+        return res_or_tol;
+    }
+    template <numeric T>
+    T integrate_trapquad(T (*f)(const T&), const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
+        if (!f)
+            return 0;
+        T f_a = f(a);
+        T f_b = f(b);
+        T estimate = ((b - a)/2)*(f_a + f_b);
+        T midpoint = (a + b)/2;
+        T f_m = f(midpoint);
+        T res_or_tol = ((b - midpoint)/2)*(f_a + 2*f_m + f_b);
+        if (abs(res_or_tol - estimate) > tol) {
+            res_or_tol = tol/2;
+            return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
+                   trapquad_recurse(f, midpoint, b, res_or_tol, f_m, f_b);
+        }
+        return res_or_tol;
     }
 }
 #endif

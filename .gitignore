@@ -1,0 +1,6 @@
+.idea/
+glib/
+cmake-build-debug/
+
+CMakeLists.txt
+
