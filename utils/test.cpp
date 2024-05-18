@@ -5,6 +5,10 @@ long double func(const long double &x) {
     return sinl(10000*x);
 }
 
+long double func2(const long double &x) {
+    return x*x;
+}
+
 int main(int argc, char **argv) {
     long double a = 0;
     long double b = 3;
@@ -21,9 +25,15 @@ int main(int argc, char **argv) {
     long double quad = diff::integrate_trapquad(&func, a, b, tol);
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration quad_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    std::cout << "Trapezium integration:\n\tNo. trapeziums = " << num << "\n\tResult = " << trap << "\n\tTime taken = "
-              << trap_time.count()/((long double) BILLION) <<
-              " s\n\nQuad-trap integration:\n\tTolerance = " << tol << "\n\tResult = "
-              << quad << "\n\tTime taken = " << quad_time.count()/((long double) BILLION) << " s\n";
+    num = 2;
+    start = std::chrono::high_resolution_clock::now();
+    long double simpson = diff::integrate_simpson(&func2, a, b, num);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    printf("Trapezium integration:\n\tNum. trapeziums = %" PRIu64 "\n\tResult = %Lf\n\tTime taken = %Lf s\n\nQuad-trap "
+           "integration:\n\tTolerance = %Lf\n\tResult = %Lf\n\tTime taken = %Lf s\n\n",
+           num, trap, trap_time.count()/((long double) BILLION), tol, quad, quad_time.count()/((long double) BILLION));
+    printf("Simpson's Rule:\n\tNum. parabolas = %" PRIu64 "\n\tResult = %Lf\n\tTime taken = %Lf s\n\n",
+        num, simpson, simp_time.count()/((long double) BILLION));
     return 0;
 }

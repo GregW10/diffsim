@@ -1,6 +1,19 @@
 #ifndef DIFFBASE_HPP
 #define DIFFBASE_HPP
 
+#ifdef __CUDACC__
+#warning "Compiling with nvcc.\n"
+#define HOST_DEVICE __host__ __device__
+//#define HOST __host__
+#define DEVICE __device__
+#define GLOBAL __global__
+#else
+#define HOST_DEVICE
+//#define HOST
+#define DEVICE
+#define GLOBAL
+#endif
+
 #include <iostream>
 #include <cmath>
 #include <cstdint>
@@ -39,23 +52,24 @@ namespace diff {
         }
     }
     template <numeric T>
-    inline T abs(const T &num) {
+    HOST_DEVICE inline T abs(const T &num) {
         return num >= 0 ? num : -num;
     }
     template <numeric T>
-    T integrate_trap(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
+    HOST_DEVICE T integrate_trap(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
         if (!f)
             return 0;
         T dx = (b - a)/num;
+        T dx_o2 = dx/2;
         uint64_t i = 0;
         uint64_t j = 1;
         T res = 0;
         while (i < num)
-            res += (dx/2)*(f(a + i++*dx) + f(a + j++*dx));
+            res += dx_o2*(f(a + i++*dx) + f(a + j++*dx));
         return res;
     }
     template <numeric T>
-    T trapquad_recurse(T (*f)(const T&), const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
+    HOST_DEVICE T trapquad_recurse(T (*f)(const T&), const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
         T estimate = ((b - a)/2)*(f_a + f_b);
         T midpoint = (a + b)/2;
         T f_m = f(midpoint);
@@ -68,7 +82,7 @@ namespace diff {
         return res_or_tol;
     }
     template <numeric T>
-    T integrate_trapquad(T (*f)(const T&), const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
+    HOST_DEVICE T integrate_trapquad(T (*f)(const T&), const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
         if (!f)
             return 0;
         T f_a = f(a);
@@ -83,6 +97,25 @@ namespace diff {
                    trapquad_recurse(f, midpoint, b, res_or_tol, f_m, f_b);
         }
         return res_or_tol;
+    }
+    template <numeric T>
+    HOST_DEVICE T integrate_simpson(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
+        if (!f)
+            return 0;
+        T dx = (b - a)/num;
+        // num *= 2;
+        //T dx_o2 = dx/2;//(b - a)/(num);
+        uint64_t i = 1;
+        T offset;
+        T a_p_dxo2 = a + dx/2;//dx_o2;
+        T res = 0.5*f(a) + 2*f(a_p_dxo2);
+        while (i < num) {
+            offset = i++*dx;
+            res += f(a + offset) + 2*f(a_p_dxo2 + offset);
+        }
+        res += 0.5*f(b);
+        res *= dx/3;
+        return res;
     }
 }
 #endif
