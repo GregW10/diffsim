@@ -7,6 +7,7 @@
 //#define HOST __host__
 #define DEVICE __device__
 #define GLOBAL __global__
+#include "cuda_runtime.h"
 #else
 #define HOST_DEVICE
 //#define HOST
@@ -34,6 +35,14 @@ namespace diff {
         {a * b} -> std::same_as<T>;
         {a / b} -> std::same_as<T>;
     };
+    template <typename C>
+    concept callable = requires (C a) {
+        {a()};
+    };
+    template <typename C, typename T>
+    concept callret = requires (C a, T t) {
+        {a(t)} -> std::same_as<T>;
+    };
     namespace misc {
         template <typename T = uint64_t> requires (std::is_integral<T>::value && std::is_unsigned<T>::value)
         T to_uint(const char *str) {
@@ -52,28 +61,30 @@ namespace diff {
         }
     }
     template <numeric T>
-    HOST_DEVICE inline T abs(const T &num) {
+    HOST_DEVICE T abs(const T &num) {
         return num >= 0 ? num : -num;
     }
-    template <numeric T>
-    HOST_DEVICE T integrate_trap(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
-        if (!f)
-            return 0;
+    template <numeric T, callret<T> F>
+    HOST_DEVICE T integrate_trap(const F &f, const T &a, const T &b, uint64_t num = 1'000'000) {
         T dx = (b - a)/num;
         T dx_o2 = dx/2;
-        uint64_t i = 0;
         uint64_t j = 1;
+        T f_i = f(a);
+        T f_j;
         T res = 0;
-        while (i < num)
-            res += dx_o2*(f(a + i++*dx) + f(a + j++*dx));
+        while (j <= num) {
+            res += dx_o2*(f_i + (f_j = f(a + j++*dx)));
+            f_i = f_j;
+        }
         return res;
     }
-    template <numeric T>
-    HOST_DEVICE T trapquad_recurse(T (*f)(const T&), const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
-        T estimate = ((b - a)/2)*(f_a + f_b);
+    template <numeric T, callret<T> F>
+    HOST_DEVICE T trapquad_recurse(const F &f, const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
+        T f_aPf_b = f_a + f_b;
+        T estimate = ((b - a)/2)*f_aPf_b;
         T midpoint = (a + b)/2;
         T f_m = f(midpoint);
-        T res_or_tol = ((b - midpoint)/2)*(f_a + 2*f_m + f_b);
+        T res_or_tol = ((b - midpoint)/2)*(f_aPf_b + 2*f_m);
         if (abs(res_or_tol - estimate) > tol) {
             res_or_tol = tol/2;
             return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
@@ -81,16 +92,15 @@ namespace diff {
         }
         return res_or_tol;
     }
-    template <numeric T>
-    HOST_DEVICE T integrate_trapquad(T (*f)(const T&), const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
-        if (!f)
-            return 0;
+    template <numeric T, callret<T> F>
+    HOST_DEVICE T integrate_trapquad(const F &f, const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
         T f_a = f(a);
         T f_b = f(b);
-        T estimate = ((b - a)/2)*(f_a + f_b);
+        T f_aPf_b = f_a + f_b;
+        T estimate = ((b - a)/2)*f_aPf_b;
         T midpoint = (a + b)/2;
         T f_m = f(midpoint);
-        T res_or_tol = ((b - midpoint)/2)*(f_a + 2*f_m + f_b);
+        T res_or_tol = ((b - midpoint)/2)*(f_aPf_b + 2*f_m);
         if (abs(res_or_tol - estimate) > tol) {
             res_or_tol = tol/2;
             return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
@@ -98,10 +108,63 @@ namespace diff {
         }
         return res_or_tol;
     }
-    template <numeric T>
-    HOST_DEVICE T integrate_simpson(T (*f)(const T&), const T &a, const T &b, uint64_t num = 1'000'000) {
-        if (!f)
-            return 0;
+    template <numeric T, callret<T> F>
+    HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, uint64_t *mdepth = nullptr) {
+        const T global_a = a;
+        const T global_b = b;
+        T m = (a + b)/2;
+        T f_a;// = f(a);
+        T f_m;// = f(m);
+        T f_b;// = f(b);
+        T res = 0;
+        T ires; // intermediate result
+        T estimate;
+        T error;
+        T dx = b - a;
+        uint64_t depth = 0;
+        bool left;
+        T numdx;
+        do {
+            f_a = f(a);
+            f_m = f(m);
+            f_b = f(b);
+            estimate = (dx/2)*(f_a + f_b);
+            ires = (dx/4)*(f_a + 2*f_m + f_b);
+            if (abs(estimate - ires) > tol) {
+                tol /= 2;
+                dx /= 2;
+                left = true;
+                b = m;
+                m = (a + b)/2; // simplify later
+                ++depth;
+            } else {
+                res += ires;
+                if (left) {
+                    a += dx;
+                    m += dx;
+                    b += dx;
+                    left = false;
+                } else {
+                    while (1) {
+                        dx *= 2;
+                        tol *= 2;
+                        --depth;
+                        numdx = (b - global_a)/dx;
+                        if () {
+
+                        } else {
+
+                        }
+                    }
+                }
+            }
+        } while (depth);
+        return res;
+    }
+    template <numeric T, callret<T> F>
+    HOST_DEVICE T integrate_simpson(const F &f, T a, T b, uint64_t num) {
+        // if (!f)
+        //     return 0;
         T dx = (b - a)/num;
         // num *= 2;
         //T dx_o2 = dx/2;//(b - a)/(num);
