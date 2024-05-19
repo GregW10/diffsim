@@ -6,7 +6,7 @@
 class Functor {
 public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
-        return sin(10000*x);
+        return std::sin(10000*x);
     }
 };
 
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     DBL trap = diff::integrate_trap(functor, a, b, num);
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    DBL tol = 0.1l;
+    DBL tol = 1/65536.0l;
     start = std::chrono::high_resolution_clock::now();
     DBL quad = diff::integrate_trapquad(functor, a, b, tol);
     end = std::chrono::high_resolution_clock::now();
@@ -55,9 +55,17 @@ int main(int argc, char **argv) {
     DBL simpson = diff::integrate_simpson(functor, a, b, num);
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    uint64_t mdepth;
+    start = std::chrono::high_resolution_clock::now();
+    DBL trapnr = diff::trapquad<double, Functor, 0>(functor, a, b, tol, &mdepth);
+    end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     printf("Trapezium integration:\n\tNum. trapeziums = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n"
-           "Quad-trap integration:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n",
-           num, trap, trap_time.count()/((DBL) BILLION), tol, quad, quad_time.count()/((DBL) BILLION));
+           "Quad-trap integration:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n"
+           "Non-recursive quad-trap:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tMax. depth = %" PRIu64
+           "\n\tTime taken = %.20lf s\n\n",
+           num, trap, trap_time.count()/((DBL) BILLION), tol, quad, quad_time.count()/((DBL) BILLION),
+           tol, trapnr, mdepth, nr_time.count()/((double) BILLION));
     printf("Simpson's Rule:\n\tNum. parabolas = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n",
         num, simpson, simp_time.count()/((DBL) BILLION));
 #ifdef __CUDACC__
@@ -72,5 +80,9 @@ int main(int argc, char **argv) {
     }
     printf("After synchronisation.\n");
 #endif
+    short bin = 0b0110101001101001;
+    char *s = diff::misc::binrepr(&bin, sizeof(short));
+    std::cout << s << std::endl;
+    delete [] s;
     return 0;
 }
