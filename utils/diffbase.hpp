@@ -38,6 +38,12 @@
 #define TRILLION 1'000'000'000'000
 #define QUADRILLION 1'000'000'000'000'000
 
+#ifdef __CUDACC__
+#define PI 3.14159265358979323846264338327950288419716939937510582097494459
+#else
+#define PI 3.14159265358979323846264338327950288419716939937510582097494459l
+#endif
+
 namespace diff {
     template <typename T>
     concept numeric = requires (T a, T b) {
@@ -137,8 +143,14 @@ namespace diff {
         }
         return res_or_tol;
     }
-    template <numeric T, callret<T> F, uint64_t max_depth = 256>
-    HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, uint64_t *mdepth = nullptr) {
+    template <numeric T, callret<T> F, uint64_t max_depth = 256, bool use_ptol = true>
+    requires (std::is_floating_point<T>::value)
+    HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 0, uint64_t *mdepth = nullptr) {
+        if (tol < 0)
+            return std::numeric_limits<T>::quiet_NaN();
+        if constexpr (use_ptol)
+            if (ptol < 0)
+                return std::numeric_limits<T>::quiet_NaN();
         if (mdepth)
             *mdepth = 0;
         uint64_t tree[(max_depth % 64) ? max_depth/64 + 1 : max_depth/64]{}; // fixed at compile-time
@@ -168,9 +180,15 @@ namespace diff {
             if constexpr (max_depth)
                 if (depth == max_depth)
                     goto other;
+            if constexpr (use_ptol)
+                if (std::abs(f_m - f_a) <= ptol && std::abs(f_b - f_m) <= ptol) // < 2*ptol
+                    goto divide;
             if (abs(estimate - ires) > tol) {
-                tol /= 2;
+                divide:
                 dx /= 2;
+                tol /= 2;
+                if constexpr (use_ptol)
+                    ptol /= 2;
                 left = true;
                 b = m;
                 m = (a + b)/2; // simplify later
@@ -178,6 +196,7 @@ namespace diff {
                 // goto start;
             } else {
                 other:
+                printf("a: %lf, b: %lf\n", a, b);
                 res += ires;
                 if (left) {
                     a += dx;
@@ -201,6 +220,8 @@ namespace diff {
                             a -= dx;
                             dx *= 2;
                             tol *= 2;
+                            if constexpr (use_ptol)
+                                ptol *= 2;
                         } while (tree[depth/64] & (1 << (depth % 64)));
                         tree[depth/64] |= (1 << (depth % 64));
                     } else {
@@ -210,6 +231,8 @@ namespace diff {
                             a -= dx;
                             dx *= 2;
                             tol *= 2;
+                            if constexpr (use_ptol)
+                                ptol *= 2;
                             numdx = (b - global_a)/dx;
                             // printf("numdx: %lf\n", numdx);
                             whole = std::round(numdx);

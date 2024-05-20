@@ -6,7 +6,7 @@
 class Functor {
 public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
-        return std::sin(10000*x);
+        return std::cos(2*x);
     }
 };
 
@@ -33,8 +33,8 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 #endif
 
 int main(int argc, char **argv) {
-    DBL a = 0;
-    DBL b = 4;
+    DBL a = -PI;
+    DBL b =  PI;
     uint64_t num = 1'000'000;
     if (argc == 2)
         num = diff::misc::to_uint(*(argv + 1));
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     DBL trap = diff::integrate_trap(functor, a, b, num);
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    DBL tol = 1/65536.0l;
+    DBL tol = 1/256.0l;
     start = std::chrono::high_resolution_clock::now();
     DBL quad = diff::integrate_trapquad(functor, a, b, tol);
     end = std::chrono::high_resolution_clock::now();
@@ -56,8 +56,9 @@ int main(int argc, char **argv) {
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     uint64_t mdepth;
+    DBL ptol = 1/65536.0;
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad<double, Functor, 0>(functor, a, b, tol, &mdepth);
+    DBL trapnr = diff::trapquad<double, Functor, 256>(functor, a, b, tol, ptol, &mdepth);
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     printf("Trapezium integration:\n\tNum. trapeziums = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n"
