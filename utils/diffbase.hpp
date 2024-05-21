@@ -157,26 +157,30 @@ namespace diff {
         const T global_a = a;
         const T global_b = b;
         T m = (a + b)/2;
-        T f_a;// = f(a);
-        T f_m;// = f(m);
-        T f_b;// = f(b);
+        T f_a = f(a);
+        T f_m = f(m);
+        T f_b = f(b);
         T res = 0;
         T ires; // intermediate result
         T estimate;
         T error;
         T dx = b - a;
+        T dxo2 = dx/2;
+        T dxo4 = dx/4;
         uint64_t depth = 0;
-        bool left = true;
+        bool left = false;
         T numdx;
         T whole;
         char *s;
+        T f_aPf_b;
         do {
             start:
-            f_a = f(a);
-            f_m = f(m);
-            f_b = f(b);
-            estimate = (dx/2)*(f_a + f_b);
-            ires = (dx/4)*(f_a + 2*f_m + f_b);
+            // f_a = f(a);
+            // f_m = f(m);
+            // f_b = f(b);
+            f_aPf_b = f_a + f_b;
+            estimate = dxo2*f_aPf_b;
+            ires = dxo4*(f_aPf_b + 2*f_m);
             if constexpr (max_depth)
                 if (depth == max_depth)
                     goto other;
@@ -185,23 +189,33 @@ namespace diff {
                     goto divide;
             if (abs(estimate - ires) > tol) {
                 divide:
-                dx /= 2;
+                dx = dxo2;
+                dxo2 = dxo4;
+                dxo4 /= 2;
+                // dx /= 2;
                 tol /= 2;
                 if constexpr (use_ptol)
                     ptol /= 2;
                 left = true;
                 b = m;
-                m = (a + b)/2; // simplify later
+                // m = (a + b)/2; // simplify later
+                m -= dxo2;
+                f_b = f_m;
+                f_m = f(m);
                 ++depth;
                 // goto start;
             } else {
                 other:
-                printf("a: %lf, b: %lf\n", a, b);
+                // printf("a: %lf, b: %lf\n", a, b);
                 res += ires;
                 if (left) {
-                    a += dx;
+                    a = b;
+                    // a += dx;
                     m += dx;
                     b += dx;
+                    f_a = f_b;
+                    f_m = f(m);
+                    f_b = f(b);
                     left = false;
                     if constexpr (max_depth)
                         tree[depth/64] |= (1 << (depth % 64));
@@ -218,6 +232,8 @@ namespace diff {
                             if (!--depth)
                                 return res;
                             a -= dx;
+                            dxo4 = dxo2;
+                            dxo2 = dx;
                             dx *= 2;
                             tol *= 2;
                             if constexpr (use_ptol)
@@ -228,7 +244,9 @@ namespace diff {
                         do {
                             if (!--depth)
                                 return res;
-                            a -= dx;
+                            // a -= dx;
+                            dxo4 = dxo2;
+                            dxo2 = dx;
                             dx *= 2;
                             tol *= 2;
                             if constexpr (use_ptol)
@@ -238,12 +256,16 @@ namespace diff {
                             whole = std::round(numdx);
                         } while (std::abs(whole - numdx) > 0.25);
                     }
-                    a += dx;
+                    // a += dx;
+                    a = b;
                     // b += dx/2;
                     b += dx;
                     // if (b > global_b)
                     //     return res;
                     m = (a + b)/2;
+                    f_a = f_b;
+                    f_m = f(m);
+                    f_b = f(b);
                     left = false;
                 }
             }

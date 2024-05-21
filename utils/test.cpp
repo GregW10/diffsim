@@ -4,9 +4,16 @@
 #define DBL double
 
 class Functor {
+    mutable uint64_t times_called = 0;
 public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
-        return std::cos(2*x);
+        ++times_called;
+        return std::exp(x);
+    }
+    uint64_t reset() const noexcept {
+        uint64_t val = times_called;
+        times_called = 0;
+        return val;
     }
 };
 
@@ -44,31 +51,39 @@ int main(int argc, char **argv) {
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+    uint64_t fc_trap = functor.reset();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     DBL tol = 1/256.0l;
     start = std::chrono::high_resolution_clock::now();
     DBL quad = diff::integrate_trapquad(functor, a, b, tol);
     end = std::chrono::high_resolution_clock::now();
+    uint64_t fc_trapr = functor.reset();
     std::chrono::duration quad_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     //num = 2;
     start = std::chrono::high_resolution_clock::now();
     DBL simpson = diff::integrate_simpson(functor, a, b, num);
     end = std::chrono::high_resolution_clock::now();
+    uint64_t fc_simps = functor.reset();
     std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     uint64_t mdepth;
     DBL ptol = 1/65536.0;
+    functor.reset();
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad<double, Functor, 256>(functor, a, b, tol, ptol, &mdepth);
+    DBL trapnr = diff::trapquad<double, Functor, 256, false>(functor, a, b, tol, ptol, &mdepth);
     end = std::chrono::high_resolution_clock::now();
+    uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    printf("Trapezium integration:\n\tNum. trapeziums = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n"
-           "Quad-trap integration:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n"
+    printf("Trapezium integration:\n\tNum. trapeziums = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\t"
+                                                                  "Num. func. calls = %" PRIu64 "\n\n"
+           "Quad-trap integration:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\t"
+           "Num. func. calls = %" PRIu64 "\n\n"
            "Non-recursive quad-trap:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tMax. depth = %" PRIu64
-           "\n\tTime taken = %.20lf s\n\n",
-           num, trap, trap_time.count()/((DBL) BILLION), tol, quad, quad_time.count()/((DBL) BILLION),
-           tol, trapnr, mdepth, nr_time.count()/((double) BILLION));
-    printf("Simpson's Rule:\n\tNum. parabolas = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\n",
-        num, simpson, simp_time.count()/((DBL) BILLION));
+           "\n\tTime taken = %.20lf s\n\tNum. func. calls = %" PRIu64 "\n\n",
+           num, trap, trap_time.count()/((DBL) BILLION), fc_trap, tol, quad, quad_time.count()/((DBL) BILLION),
+           fc_trapr, tol, trapnr, mdepth, nr_time.count()/((double) BILLION), fc_trapi);
+    printf("Simpson's Rule:\n\tNum. parabolas = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\t"
+                                                          "Num. func. calls = %" PRIu64 "\n\n",
+        num, simpson, simp_time.count()/((DBL) BILLION), fc_simps);
 #ifdef __CUDACC__
     dim3 blockSize{1, 1};
     dim3 gridSize{1, 1};
