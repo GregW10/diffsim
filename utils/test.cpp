@@ -1,4 +1,5 @@
 #include "diffbase.hpp"
+#include "../glib/misc/gregstack.hpp"
 #include <chrono>
 
 #define DBL double
@@ -53,7 +54,7 @@ int main(int argc, char **argv) {
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trap = functor.reset();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    DBL tol = 1/256.0l;
+    DBL tol = 1/1.0l;
     start = std::chrono::high_resolution_clock::now();
     DBL quad = diff::integrate_trapquad(functor, a, b, tol);
     end = std::chrono::high_resolution_clock::now();
@@ -69,7 +70,7 @@ int main(int argc, char **argv) {
     DBL ptol = 1/65536.0;
     functor.reset();
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad<double, Functor, 256, false>(functor, a, b, tol, ptol, &mdepth);
+    DBL trapnr = diff::trapquad<double, Functor, 1024, false>(functor, a, b, tol, ptol, &mdepth);
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);

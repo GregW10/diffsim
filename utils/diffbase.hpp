@@ -5,24 +5,11 @@
 #error OS not supported
 #endif
 
+#include "../glib/misc/gregstack.hpp"
 #include <climits>
 
 #if (CHAR_BIT != 8)
 #error A byte has to have 8 bits.
-#endif
-
-#ifdef __CUDACC__
-#warning "Compiling with nvcc.\n"
-#define HOST_DEVICE __host__ __device__
-//#define HOST __host__
-#define DEVICE __device__
-#define GLOBAL __global__
-#include "cuda_runtime.h"
-#else
-#define HOST_DEVICE
-//#define HOST
-#define DEVICE
-#define GLOBAL
 #endif
 
 #include <iostream>
@@ -153,6 +140,11 @@ namespace diff {
                 return std::numeric_limits<T>::quiet_NaN();
         if (mdepth)
             *mdepth = 0;
+        struct func_vals {
+            T fm;
+            T fb;
+        } fmfb_val;
+        gtd::stack<func_vals> stack;
         uint64_t tree[(max_depth % 64) ? max_depth/64 + 1 : max_depth/64]{}; // fixed at compile-time
         const T global_a = a;
         const T global_b = b;
@@ -163,7 +155,7 @@ namespace diff {
         T res = 0;
         T ires; // intermediate result
         T estimate;
-        T error;
+        // T error;
         T dx = b - a;
         T dxo2 = dx/2;
         T dxo4 = dx/4;
@@ -171,7 +163,6 @@ namespace diff {
         bool left = false;
         T numdx;
         T whole;
-        char *s;
         T f_aPf_b;
         do {
             start:
@@ -189,6 +180,7 @@ namespace diff {
                     goto divide;
             if (abs(estimate - ires) > tol) {
                 divide:
+                printf("Split into two.\n");
                 dx = dxo2;
                 dxo2 = dxo4;
                 dxo4 /= 2;
@@ -200,6 +192,9 @@ namespace diff {
                 b = m;
                 // m = (a + b)/2; // simplify later
                 m -= dxo2;
+                fmfb_val.fm = f_m;
+                fmfb_val.fb = f_b;
+                stack.push(fmfb_val);
                 f_b = f_m;
                 f_m = f(m);
                 ++depth;
@@ -209,18 +204,28 @@ namespace diff {
                 // printf("a: %lf, b: %lf\n", a, b);
                 res += ires;
                 if (left) {
+                    printf("else -> if (left)\n");
                     a = b;
                     // a += dx;
                     m += dx;
                     b += dx;
                     f_a = f_b;
+                    printf("Size of stack: %" PRIu64 "\n", stack.size());
                     f_m = f(m);
                     f_b = f(b);
+                    // printf("f(m) = %lf, top: %lf\n", f_m, stack.top().fm);
+                    printf("f(b) = %lf, top: %lf\n", f_b, stack.top().fb);
+                    fmfb_val = stack.pop_r();
+                    f_m = fmfb_val.fm;
+                    f_b = fmfb_val.fb;
+                    // f_b = stack.top().fb;
+                    // stack.top().fm = f_m;
                     left = false;
                     if constexpr (max_depth)
                         tree[depth/64] |= (1 << (depth % 64));
                     // goto start;
                 } else {
+                    printf("else -> else\n");
                     if (mdepth)
                         if (depth > *mdepth)
                             *mdepth = depth;
@@ -238,6 +243,8 @@ namespace diff {
                             tol *= 2;
                             if constexpr (use_ptol)
                                 ptol *= 2;
+                            f_m = stack.pop_r().fb;
+                            printf("Stack size: %" PRIu64 ", depth: %" PRIu64 "\n", stack.size(), depth);
                         } while (tree[depth/64] & (1 << (depth % 64)));
                         tree[depth/64] |= (1 << (depth % 64));
                     } else {
@@ -251,6 +258,7 @@ namespace diff {
                             tol *= 2;
                             if constexpr (use_ptol)
                                 ptol *= 2;
+                            f_m = stack.pop_r().fb;
                             numdx = (b - global_a)/dx;
                             // printf("numdx: %lf\n", numdx);
                             whole = std::round(numdx);
@@ -264,14 +272,19 @@ namespace diff {
                     //     return res;
                     m = (a + b)/2;
                     f_a = f_b;
+                    f_b = f_m;
                     f_m = f(m);
-                    f_b = f(b);
+                    fmfb_val.fm = f_m;
+                    fmfb_val.fb = f_b;
+                    stack.push(fmfb_val);
+                    // f_b = f(b);
                     left = false;
                 }
             }
             // printf("Depth: %" PRIu64 ", a: %lf, b: %lf, dx: %lf\n", depth, a, b, dx);
             // sleep(1);
         } while (depth);
+        std::cout << "Size of stack: " << stack.size() << std::endl;
         return res;
     }
     template <numeric T, callret<T> F>
