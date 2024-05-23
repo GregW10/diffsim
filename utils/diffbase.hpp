@@ -31,6 +31,8 @@
 #define PI 3.14159265358979323846264338327950288419716939937510582097494459l
 #endif
 
+#define EMPTY
+
 namespace diff {
     template <typename T>
     concept numeric = requires (T a, T b) {
@@ -101,21 +103,24 @@ namespace diff {
         return res;
     }
     template <numeric T, callret<T> F>
-    HOST_DEVICE T trapquad_recurse(const F &f, const T &a, const T &b, const T &tol, const T &f_a, const T &f_b) {
+    HOST_DEVICE T trapquad_recurse(const F &f, const T &a, const T &b, const T &tol, const T &ptol,
+                                   const T &f_a, const T &f_b) {
         T f_aPf_b = f_a + f_b;
         T estimate = ((b - a)/2)*f_aPf_b;
         T midpoint = (a + b)/2;
         T f_m = f(midpoint);
         T res_or_tol = ((b - midpoint)/2)*(f_aPf_b + 2*f_m);
-        if (abs(res_or_tol - estimate) > tol) {
+        if (abs(res_or_tol - estimate) > tol ||
+            std::abs((a - midpoint)*(f_b - f_m) + (f_m - f_a)*(b - midpoint)) <= ptol) {
             res_or_tol = tol/2;
-            return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
-                   trapquad_recurse(f, midpoint, b, res_or_tol, f_m, f_b);
+            return trapquad_recurse(f, a, midpoint, res_or_tol, ptol/2, f_a, f_m) +
+                   trapquad_recurse(f, midpoint, b, res_or_tol, ptol/2, f_m, f_b);
         }
         return res_or_tol;
     }
     template <numeric T, callret<T> F>
-    HOST_DEVICE T integrate_trapquad(const F &f, const T &a, const T &b, const T &tol = 0.0625l/1024.0l) {
+    HOST_DEVICE T integrate_trapquad(const F &f, const T &a, const T &b, const T &tol = 0.0625l/1024.0l,
+                                     const T &ptol = 0.0625l/4096.0l) {
         T f_a = f(a);
         T f_b = f(b);
         T f_aPf_b = f_a + f_b;
@@ -123,10 +128,11 @@ namespace diff {
         T midpoint = (a + b)/2;
         T f_m = f(midpoint);
         T res_or_tol = ((b - midpoint)/2)*(f_aPf_b + 2*f_m);
-        if (abs(res_or_tol - estimate) > tol) {
+        if (abs(res_or_tol - estimate) > tol ||
+            std::abs((a - midpoint)*(f_b - f_m) + (f_m - f_a)*(b - midpoint)) <= ptol) {
             res_or_tol = tol/2;
-            return trapquad_recurse(f, a, midpoint, res_or_tol, f_a, f_m) +
-                   trapquad_recurse(f, midpoint, b, res_or_tol, f_m, f_b);
+            return trapquad_recurse(f, a, midpoint, res_or_tol, ptol/2, f_a, f_m) +
+                   trapquad_recurse(f, midpoint, b, res_or_tol, ptol/2, f_m, f_b);
         }
         return res_or_tol;
     }
@@ -286,6 +292,129 @@ namespace diff {
         } while (depth);
         std::cout << "Size of stack: " << stack.size() << std::endl;
         return res;
+    }
+#define NO_MAX_DEPTH ((uint64_t) -1)
+    template <numeric T, callret<T> F>
+    requires (std::is_floating_point<T>::value)
+    HOST_DEVICE T trapquad_n(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
+        uint64_t *mdepth = nullptr) {
+        if (b <= a || tol <= 0)
+            return std::numeric_limits<T>::quiet_NaN();
+        gtd::stack<T> stack;
+        T dx = b - a;
+        T dxo2 = dx/2;
+        T dxo4 = dx/4;
+        T m = (a + b)/2;
+        T fa = f(a);
+        T fm = f(m);
+        T fb = f(b);
+        T faPfb;
+        T estimate;
+        T ires;
+        T res = 0;
+        bool left = false;
+#define CROSS std::abs(dxo2*((fm - fb) + (fm - fa)))
+#define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+        while (1) { \
+            par1 \
+            faPfb = fa + fb; \
+            estimate = dxo2*faPfb; \
+            ires = dxo4*(faPfb + 2*fm); \
+            par2 \
+            if (std::abs(ires - estimate) > tol) { \
+                lab1: \
+                dx = dxo2; \
+                dxo2 = dxo4; \
+                dxo4 /= 2; \
+                tol /= 2; \
+                par0 \
+                b = m; \
+                m -= dxo2; \
+                stack.push(fb); \
+                fb = fm; \
+                fm = f(m); \
+                left = true; \
+            } \
+            else { \
+                lab2: \
+                res += ires; \
+                if (left) { \
+                    a = b; \
+                    m += dx; \
+                    b += dx; \
+                    fa = fb; \
+                    fm = f(m); \
+                    fb = stack.top(); \
+                    left = false; \
+                } \
+                else { \
+                    if (!stack) \
+                        return res; \
+                    par3 \
+                    while (stack.top() == fb) { \
+                        m = a; \
+                        a -= dx; \
+                        dxo4 = dxo2; \
+                        dxo2 = dx; \
+                        dx *= 2; \
+                        tol *= 2; \
+                        par00 \
+                        stack.pop(); \
+                        if (!stack) \
+                            return res; \
+                    } \
+                    a = b; \
+                    m += dx; \
+                    b += dx; \
+                    fa = fb; \
+                    fm = f(m); \
+                    fb = stack.top(); \
+                    left = false; \
+                } \
+            } \
+        }
+        if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+            if (mdepth) {
+                uint64_t _s;
+                if (*mdepth == NO_MAX_DEPTH) {
+                    *mdepth = 0;
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
+                                  if (CROSS <= ptol) {goto divide_1;},
+                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_1, other_1)
+                } else {
+                    uint64_t max_depth = *mdepth;
+                    *mdepth = 0;
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                                  if ((_s = stack.size()) == max_depth) {ires = dxo4*(faPfb + 2*fm); goto other_2;},
+                                  if (CROSS <= ptol) {goto divide_2;},
+                                  if (_s > *mdepth) {*mdepth = _s;}, divide_2, other_2)
+                }
+            } else {
+                TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                              EMPTY, if (CROSS <= ptol) {goto divide_3;},
+                              EMPTY, divide_3, other_3)
+            }
+        } else {
+            if (mdepth) {
+                uint64_t _s;
+                if (*mdepth == NO_MAX_DEPTH) {
+                    *mdepth = 0;
+                    TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
+                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_4, other_4)
+                } else {
+                    uint64_t max_depth = *mdepth;
+                    *mdepth = 0;
+                    TRAPQUAD_LOOP(EMPTY, EMPTY,
+                                  if ((_s = stack.size()) == max_depth) {ires = dxo4*(faPfb + 2*fm); goto other_5;},
+                                  EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
+                }
+            } else {
+                TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+            }
+        }
+#undef TRAPQUAD_LOOP
+#undef CROSS
+        return res; // for completeness, but would never be reached
     }
     template <numeric T, callret<T> F>
     HOST_DEVICE T integrate_simpson(const F &f, T a, T b, uint64_t num) {

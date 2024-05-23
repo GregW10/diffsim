@@ -1,6 +1,7 @@
 #include "diffbase.hpp"
 #include "../glib/misc/gregstack.hpp"
 #include <chrono>
+#include <complex>
 
 #define DBL double
 
@@ -9,22 +10,18 @@ class Functor {
 public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
         ++times_called;
-        return std::exp(x);
+        DBL val = std::cos(x);
+        return val*val;
     }
     uint64_t reset() const noexcept {
         uint64_t val = times_called;
         times_called = 0;
         return val;
     }
+    uint64_t ncalls() const noexcept {
+        return times_called;
+    }
 };
-
-HOST_DEVICE DBL func(DBL x) {
-    return sin(10000*x);
-}
-
-HOST_DEVICE DBL func2(DBL x) {
-    return x*x;
-}
 
 #ifdef __CUDACC__
 template <typename F>
@@ -41,22 +38,22 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 #endif
 
 int main(int argc, char **argv) {
-    DBL a = -PI;
-    DBL b =  PI;
+    DBL a = 0;
+    DBL b = 2*PI;
     uint64_t num = 1'000'000;
     if (argc == 2)
         num = diff::misc::to_uint(*(argv + 1));
     Functor functor;
-    std::cout << "With functor.\n" << std::endl;
+    DBL tol = 1/65536.0l;
+    DBL ptol = 0.0000001;///16.0;
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trap = functor.reset();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    DBL tol = 1/1.0l;
     start = std::chrono::high_resolution_clock::now();
-    DBL quad = diff::integrate_trapquad(functor, a, b, tol);
+    DBL quad = diff::integrate_trapquad(functor, a, b, tol, ptol);
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trapr = functor.reset();
     std::chrono::duration quad_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
@@ -66,11 +63,10 @@ int main(int argc, char **argv) {
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_simps = functor.reset();
     std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    uint64_t mdepth;
-    DBL ptol = 1/65536.0;
-    functor.reset();
+    uint64_t mdepth = 4096;
+    // functor.reset();
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad<double, Functor, 1024, false>(functor, a, b, tol, ptol, &mdepth);
+    DBL trapnr = diff::trapquad_n<double, Functor>(functor, a, b, tol, ptol, &mdepth);
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
