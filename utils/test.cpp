@@ -3,7 +3,7 @@
 #include <chrono>
 #include <complex>
 
-#define DBL double
+#define DBL long double
 
 class Functor {
     mutable uint64_t times_called = 0;
@@ -39,13 +39,17 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 
 int main(int argc, char **argv) {
     DBL a = 0;
-    DBL b = 2*PI;
+    DBL b = 10*PI;
     uint64_t num = 1'000'000;
+    uint64_t mdepth = 32;
+    char *endptr;
     if (argc == 2)
-        num = diff::misc::to_uint(*(argv + 1));
+        mdepth = diff::misc::to_uint(*(argv + 1));
+    // if (endptr == *(argv + 1))
+    //     return 1;
     Functor functor;
-    DBL tol = 1/65536.0l;
-    DBL ptol = 0.0000001;///16.0;
+    DBL tol = (1/65536.0l)/65536.0l;
+    DBL ptol = 0.00000000001;///16.0;
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);
@@ -53,7 +57,7 @@ int main(int argc, char **argv) {
     uint64_t fc_trap = functor.reset();
     std::chrono::duration trap_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     start = std::chrono::high_resolution_clock::now();
-    DBL quad = diff::integrate_trapquad(functor, a, b, tol, ptol);
+    DBL quad = 1;//diff::integrate_trapquad(functor, a, b, tol, ptol);
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trapr = functor.reset();
     std::chrono::duration quad_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
@@ -63,10 +67,9 @@ int main(int argc, char **argv) {
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_simps = functor.reset();
     std::chrono::duration simp_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-    uint64_t mdepth = 4096;
     // functor.reset();
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad_n<double, Functor>(functor, a, b, tol, ptol, &mdepth);
+    DBL trapnr = diff::trapquad_n(functor, a, b, tol, ptol, &mdepth);
     end = std::chrono::high_resolution_clock::now();
     uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);

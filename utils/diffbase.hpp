@@ -301,6 +301,8 @@ namespace diff {
         if (b <= a || tol <= 0)
             return std::numeric_limits<T>::quiet_NaN();
         gtd::stack<T> stack;
+        T global_range = b - a;
+        // T global_b = b;
         T dx = b - a;
         T dxo2 = dx/2;
         T dxo4 = dx/4;
@@ -313,6 +315,7 @@ namespace diff {
         T ires;
         T res = 0;
         bool left = false;
+        uint64_t bitmask;
 #define CROSS std::abs(dxo2*((fm - fb) + (fm - fa)))
 #define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
         while (1) { \
@@ -322,6 +325,7 @@ namespace diff {
             ires = dxo4*(faPfb + 2*fm); \
             par2 \
             if (std::abs(ires - estimate) > tol) { \
+                /*printf("if\n");*/ \
                 lab1: \
                 dx = dxo2; \
                 dxo2 = dxo4; \
@@ -334,11 +338,21 @@ namespace diff {
                 fb = fm; \
                 fm = f(m); \
                 left = true; \
+                if ((stack.size()) > tree.size()*64) { \
+                    tree.push(); \
+                } \
+                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
+                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
+                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
+                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
             } \
             else { \
+                /*printf("----------else-----------\n");*/ \
                 lab2: \
+                printf("%Lf%% complete\r", (((long double) b)/global_range)*100); \
                 res += ires; \
                 if (left) { \
+                    /*printf("else -> if\n");*/ \
                     a = b; \
                     m += dx; \
                     b += dx; \
@@ -346,12 +360,20 @@ namespace diff {
                     fm = f(m); \
                     fb = stack.top(); \
                     left = false; \
+                    tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
                 } \
                 else { \
+                    /*printf("else -> else\n");*/ \
+                    /*if (b + dx > global_b)*/ \
+                        /*return res;*/ \
                     if (!stack) \
                         return res; \
                     par3 \
-                    while (stack.top() == fb) { \
+                    do { \
+                        stack.pop(); \
+                        if (!stack) \
+                            return res; \
+                        tree.top() &= ~(1ull << (stack.size() % 64)); \
                         m = a; \
                         a -= dx; \
                         dxo4 = dxo2; \
@@ -359,10 +381,12 @@ namespace diff {
                         dx *= 2; \
                         tol *= 2; \
                         par00 \
-                        stack.pop(); \
-                        if (!stack) \
-                            return res; \
-                    } \
+                        bitmask = (1ull << ((stack.size() - 1) % 64)); \
+                        if (bitmask == 9'223'372'036'854'775'808u) \
+                            tree.pop(); \
+                        /*printf("stack.size(): %" PRIu64 ", tree.top(): %" PRIu64 ", bitmask: %" PRIu64 "\n",*/ \
+                        /*stack.size(), tree.top(), bitmask); */\
+                    } while ((tree.top() & bitmask) > 0); \
                     a = b; \
                     m += dx; \
                     b += dx; \
@@ -370,6 +394,7 @@ namespace diff {
                     fm = f(m); \
                     fb = stack.top(); \
                     left = false; \
+                    tree.top() |= bitmask; \
                 } \
             } \
         }
@@ -378,18 +403,21 @@ namespace diff {
                 uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
+                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
                     TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
                                   if (CROSS <= ptol) {goto divide_1;},
                                   if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_1, other_1)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                     TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
                                   if ((_s = stack.size()) == max_depth) {ires = dxo4*(faPfb + 2*fm); goto other_2;},
                                   if (CROSS <= ptol) {goto divide_2;},
                                   if (_s > *mdepth) {*mdepth = _s;}, divide_2, other_2)
                 }
             } else {
+                gtd::stack<uint64_t> tree{8};
                 TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
                               EMPTY, if (CROSS <= ptol) {goto divide_3;},
                               EMPTY, divide_3, other_3)
@@ -399,16 +427,19 @@ namespace diff {
                 uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
+                    gtd::stack<uint64_t> tree{8};
                     TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
                                   if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_4, other_4)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                     TRAPQUAD_LOOP(EMPTY, EMPTY,
                                   if ((_s = stack.size()) == max_depth) {ires = dxo4*(faPfb + 2*fm); goto other_5;},
                                   EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
                 }
             } else {
+                gtd::stack<uint64_t> tree{8};
                 TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
             }
         }
