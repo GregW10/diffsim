@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cinttypes>
 #include <unistd.h>
+#include <fstream>
 
 #define ABS(num) ((num) >= 0 ? (num) : -(num))
 
@@ -136,7 +137,7 @@ namespace diff {
         }
         return res_or_tol;
     }
-    template <numeric T, callret<T> F, uint64_t max_depth = 256, bool use_ptol = true>
+    /* template <numeric T, callret<T> F, uint64_t max_depth = 256, bool use_ptol = true>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 0, uint64_t *mdepth = nullptr) {
         if (tol < 0)
@@ -292,16 +293,16 @@ namespace diff {
         } while (depth);
         std::cout << "Size of stack: " << stack.size() << std::endl;
         return res;
-    }
+    } */
 #define NO_MAX_DEPTH ((uint64_t) -1)
     template <numeric T, callret<T> F>
     requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T trapquad_n(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
-        uint64_t *mdepth = nullptr) {
-        if (b <= a || tol <= 0)
+    HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
+        uint64_t *mdepth = nullptr/*, std::ofstream *out = nullptr*/) {
+        if (b <= a || tol <= 0/* || !out*/)
             return std::numeric_limits<T>::quiet_NaN();
         gtd::stack<T> stack;
-        T global_range = b - a;
+        // T global_range = b - a;
         // T global_b = b;
         T dx = b - a;
         T dxo2 = dx/2;
@@ -349,7 +350,10 @@ namespace diff {
             else { \
                 /*printf("----------else-----------\n");*/ \
                 lab2: \
-                printf("%Lf%% complete\r", (((long double) b)/global_range)*100); \
+                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
+                /*out->write((char *) &a, sizeof(T));*/ \
+                /*out->write((char *) &m, sizeof(T));*/ \
+                /*out->write((char *) &b, sizeof(T));*/ \
                 res += ires; \
                 if (left) { \
                     /*printf("else -> if\n");*/ \
