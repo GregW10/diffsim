@@ -466,5 +466,195 @@ namespace diff {
         res *= dx/3;
         return res;
     }
+    template <numeric T, callret<T> F>
+    requires (std::is_floating_point<T>::value)
+    HOST_DEVICE T simpquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
+        uint64_t *mdepth = nullptr/*, std::ofstream *out = nullptr*/) {
+        if (b <= a || tol <= 0/* || !out*/)
+            return std::numeric_limits<T>::quiet_NaN();
+        struct fm3fb_val {
+            T fm3;
+            T fb;
+        } fm3fb;
+        gtd::stack<fm3fb_val> stack;
+        // T global_range = b - a;
+        // T global_b = b;
+        T dx = b - a;
+        T dxo2 = dx/2;
+        T dxo4 = dx/4;
+        T dxo6 = dx/6;
+        T dxo12 = dx/12;
+        T m2 = (a + b)/2;
+        T m1 = m2 - dxo4;
+        T m3 = m2 + dxo4;
+        T fa = f(a);
+        T fm1 = f(m1);
+        T fm2 = f(m2);
+        T fm3 = f(m3);
+        T fb = f(b);
+        T faPfb;
+        T estimate;
+        T ires;
+        T res = 0;
+        bool left = false;
+        uint64_t bitmask;
+#define CROSS std::abs(dxo2*((fm2 - fb) + (fm2 - fa)))
+#define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+        while (1) { \
+            par1 \
+            faPfb = fa + fb; \
+            estimate = dxo6*(fa + 4*fm2 + fb); \
+            ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); \
+            par2 \
+            if (std::abs(ires - estimate) > tol) { \
+                /*printf("if\n");*/ \
+                lab1: \
+                dx = dxo2; \
+                dxo2 = dxo4; \
+                dxo4 /= 2; \
+                dxo6 = dxo12; \
+                dxo12 /= 2; \
+                tol /= 2; \
+                par0 \
+                b = m2; \
+                m2 -= dxo2; \
+                m1 -= dxo4; \
+                m3 = m2 + dxo4; \
+                fm3fb.fm3 = fm3; \
+                fm3fb.fb = fb; \
+                stack.push(fm3fb); \
+                fb = fm2; \
+                fm2 = fm1; \
+                fm1 = f(m1); \
+                fm3 = f(m3); \
+                left = true; \
+                if ((stack.size()) > tree.size()*64) { \
+                    tree.push(); \
+                } \
+                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
+                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
+                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
+                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
+            } \
+            else { \
+                /*printf("----------else-----------\n");*/ \
+                lab2: \
+                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
+                /*out->write((char *) &a, sizeof(T));*/ \
+                /*out->write((char *) &m, sizeof(T));*/ \
+                /*out->write((char *) &b, sizeof(T));*/ \
+                res += ires; \
+                if (left) { \
+                    /*printf("else -> if\n");*/ \
+                    a = b; \
+                    m1 += dx; \
+                    m2 += dx; \
+                    m3 += dx; \
+                    b += dx; \
+                    fa = fb; \
+                    fm1 = f(m1); \
+                    fm3 = f(m3); \
+                    fm3fb = stack.top(); \
+                    fm2 = fm3fb.fm3; \
+                    fb = fm3fb.fb; \
+                    left = false; \
+                    tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
+                } \
+                else { \
+                    /*printf("else -> else\n");*/ \
+                    /*if (b + dx > global_b)*/ \
+                        /*return res;*/ \
+                    if (!stack) \
+                        return res; \
+                    par3 \
+                    do { \
+                        stack.pop(); \
+                        if (!stack) \
+                            return res; \
+                        tree.top() &= ~(1ull << (stack.size() % 64)); \
+                        m2 = a; \
+                        a -= dx; \
+                        m1 = a + dxo2; \
+                        m3 = m1 + dx; \
+                        dxo4 = dxo2; \
+                        dxo2 = dx; \
+                        dx *= 2; \
+                        dxo12 = dxo6; \
+                        dxo6 *= 2; \
+                        tol *= 2; \
+                        par00 \
+                        bitmask = (1ull << ((stack.size() - 1) % 64)); \
+                        if (bitmask == 9'223'372'036'854'775'808u) \
+                            tree.pop(); \
+                        /*printf("stack.size(): %" PRIu64 ", tree.top(): %" PRIu64 ", bitmask: %" PRIu64 "\n",*/ \
+                        /*stack.size(), tree.top(), bitmask); */\
+                    } while ((tree.top() & bitmask) > 0); \
+                    a = b; \
+                    m1 += dx; \
+                    m2 += dx; \
+                    m3 += dx; \
+                    b += dx; \
+                    fa = fb; \
+                    fm1 = f(m1); \
+                    fm3 = f(m3); \
+                    fm3fb = stack.top(); \
+                    fm2 = fm3fb.fm3; \
+                    fb = fm3fb.fb; \
+                    left = false; \
+                    tree.top() |= bitmask; \
+                } \
+            } \
+        }
+        if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+            if (mdepth) {
+                uint64_t _s;
+                if (*mdepth == NO_MAX_DEPTH) {
+                    *mdepth = 0;
+                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
+                                  if (CROSS <= ptol) {goto divide_1;},
+                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_1, other_1)
+                } else {
+                    uint64_t max_depth = *mdepth;
+                    *mdepth = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                                  if ((_s = stack.size()) == max_depth)
+                                  {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_2;},
+                                  if (CROSS <= ptol) {goto divide_2;},
+                                  if (_s > *mdepth) {*mdepth = _s;}, divide_2, other_2)
+                }
+            } else {
+                gtd::stack<uint64_t> tree{8};
+                TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                              EMPTY, if (CROSS <= ptol) {goto divide_3;},
+                              EMPTY, divide_3, other_3)
+            }
+        } else {
+            if (mdepth) {
+                uint64_t _s;
+                if (*mdepth == NO_MAX_DEPTH) {
+                    *mdepth = 0;
+                    gtd::stack<uint64_t> tree{8};
+                    TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
+                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_4, other_4)
+                } else {
+                    uint64_t max_depth = *mdepth;
+                    *mdepth = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                    TRAPQUAD_LOOP(EMPTY, EMPTY,
+                                  if ((_s = stack.size()) == max_depth)
+                                  {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_5;},
+                                  EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
+                }
+            } else {
+                gtd::stack<uint64_t> tree{8};
+                TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+            }
+        }
+#undef TRAPQUAD_LOOP
+#undef CROSS
+        return res; // for completeness, but would never be reached
+    }
 }
 #endif
