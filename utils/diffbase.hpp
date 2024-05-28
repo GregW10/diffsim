@@ -302,9 +302,11 @@ namespace diff {
     template <numeric T, callret<T> F>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
-        uint64_t *mdepth = nullptr/*, std::ofstream *out = nullptr*/) {
-        if (b <= a || tol <= 0/* || !out*/)
+        uint64_t *mdepth = nullptr) {
+        if (b < a || tol <= 0)
             return std::numeric_limits<T>::quiet_NaN();
+        if (a == b) // zero width = zero area, so might as well save some computation below
+            return 0;
         gtd::stack<T> stack;
         // T global_range = b - a;
         // T global_b = b;
@@ -474,8 +476,10 @@ namespace diff {
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
         T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
-        if (b <= a || abstol <= 0 || reltol < 0 || reltol >= 1)
+        if (b < a || abstol <= 0 || reltol < 0 || reltol >= 1)
             return std::numeric_limits<T>::quiet_NaN();
+        if (a == b) // zero width = zero area, so might as well save some computation below
+            return 0;
         struct fm3fb_val {
             T fm3;
             T fb;
@@ -663,10 +667,23 @@ namespace diff {
     }
     template <numeric T, calldblret<T> F, callret<T> GH>
     requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T simpdblquad(const F &f, T ya, T yb, const GH &gfunc, const GH &hfunc, T tol = 0.0625l/1024.0l,
-        T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth_y = nullptr, uint64_t *mdepth_x = nullptr) {
-        if (yb <= ya || tol <= 0)
+    HOST_DEVICE T simpdblquad(const F &f,
+                              T ya,
+                              T yb,
+                              const GH &gfunc,
+                              const GH &hfunc,
+                              T abstol_y = 0.0625l/1024.0l,
+                              T reltol_y = 0.0625l/1024.0l,
+                              T ptol_y = 1/(1024.0l*1024.0l),
+                              uint64_t *mdepth_y = nullptr,
+                              T abstol_x = 0.0625l/1024.0l,
+                              T reltol_x = 0.0625l/1024.0l,
+                              T ptol_x = 1/(1024.0l*1024.0l),
+                              uint64_t *mdepth_x = nullptr) {
+        if (yb <= ya || abstol_y <= 0)
             return std::numeric_limits<T>::quiet_NaN();
+        if (ya == yb) // zero width = zero area, so might as well save some computation below
+            return 0;
         struct fym3fyb_val {
             T fym3;
             T fyb;
@@ -685,18 +702,25 @@ namespace diff {
         T y;
         auto fy_lam = [&f, &y](T x){return f(x, y);};
         y = ya;
-        T fya = simpquad(fy_lam, gfunc(ya), hfunc(ya), tol, ptol, mdepth_x);
+        //printf("Before ya\n");
+        T fya = simpquad(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, mdepth_x);
+        //printf("after ya\n");
         y = ym1;
-        T fym1 = f(ym1);
-        T fym2 = f(ym2);
-        T fym3 = f(ym3);
-        T fyb = f(yb);
+        T fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x);
+        y = ym2;
+        T fym2 = simpquad(fy_lam, gfunc(ym2), hfunc(ym2), abstol_x, reltol_x, ptol_x, mdepth_x);
+        y = ym3;
+        T fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x);
+        y = yb;
+        T fyb = simpquad(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mdepth_x);
+        //printf("fya: %lf, fym1: %lf, fym2: %lf, fym3: %lf, fyb: %lf\n", fya, fym1, fym2, fym3, fyb);
         T fyaPfyb;
         T estimate;
         T ires;
         T res = 0;
         bool left = false;
         uint64_t bitmask;
+        T absval;
 #define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
 #define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
         while (1) { \
@@ -705,7 +729,7 @@ namespace diff {
             estimate = dyo6*(fyaPfyb + 4*fym2); \
             ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3); \
             par2 \
-            if (std::abs(ires - estimate) > tol) { \
+            if ((absval = std::abs(ires - estimate)) > abstol_y && absval > reltol_y*ires) { \
                 /*printf("if\n");*/ \
                 lab1: \
                 dy = dyo2; \
@@ -713,7 +737,7 @@ namespace diff {
                 dyo4 /= 2; \
                 dyo6 = dyo12; \
                 dyo12 /= 2; \
-                tol /= 2; \
+                abstol_y /= 2; \
                 par0 \
                 yb = ym2; \
                 ym2 -= dyo2; \
@@ -724,8 +748,10 @@ namespace diff {
                 stack.push(fym3fyb); \
                 fyb = fym2; \
                 fym2 = fym1; \
-                fym1 = f(ym1); \
-                fym3 = f(ym3); \
+                y = ym1; \
+                fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                y = ym3; \
+                fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
                 left = true; \
                 if ((stack.size()) > tree.size()*64) { \
                     tree.push(); \
@@ -751,8 +777,10 @@ namespace diff {
                     ym3 += dy; \
                     yb += dy; \
                     fya = fyb; \
-                    fym1 = f(ym1); \
-                    fym3 = f(ym3); \
+                    y = ym1; \
+                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    y = ym3; \
+                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
                     fym3fyb = stack.top(); \
                     fym2 = fym3fyb.fym3; \
                     fyb = fym3fyb.fyb; \
@@ -780,7 +808,7 @@ namespace diff {
                         dy *= 2; \
                         dyo12 = dyo6; \
                         dyo6 *= 2; \
-                        tol *= 2; \
+                        abstol_y *= 2; \
                         par00 \
                         bitmask = (1ull << ((stack.size() - 1) % 64)); \
                         if (bitmask == 9'223'372'036'854'775'808u) \
@@ -794,8 +822,10 @@ namespace diff {
                     ym3 += dy; \
                     yb += dy; \
                     fya = fyb; \
-                    fym1 = f(ym1); \
-                    fym3 = f(ym3); \
+                    y = ym1; \
+                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    y = ym3; \
+                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
                     fym3fyb = stack.top(); \
                     fym2 = fym3fyb.fym3; \
                     fyb = fym3fyb.fyb; \
@@ -804,29 +834,29 @@ namespace diff {
                 } \
             } \
         }
-        if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+        if (ptol_y >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
             if (mdepth_y) {
                 uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
                     *mdepth_y = 0;
                     gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
-                                  if (CROSS <= ptol) {goto divide_1;},
+                    TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;, EMPTY,
+                                  if (CROSS <= ptol_y) {goto divide_1;},
                                   if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;}, divide_1, other_1)
                 } else {
                     uint64_t max_depth = *mdepth_y;
                     *mdepth_y = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                    TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;,
                                   if ((_s = stack.size()) == max_depth)
                                   {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_2;},
-                                  if (CROSS <= ptol) {goto divide_2;},
+                                  if (CROSS <= ptol_y) {goto divide_2;},
                                   if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_2, other_2)
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};
-                TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
-                              EMPTY, if (CROSS <= ptol) {goto divide_3;},
+                TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;,
+                              EMPTY, if (CROSS <= ptol_y) {goto divide_3;},
                               EMPTY, divide_3, other_3)
             }
         } else {
