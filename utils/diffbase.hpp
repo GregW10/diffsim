@@ -50,6 +50,10 @@ namespace diff {
     concept callret = requires (C a, T t) {
         {a(t)} -> std::same_as<T>;
     };
+    template <typename C, typename T>
+    concept calldblret = requires (C a, T t1, T t2) {
+        {a(t1, t2)} -> std::same_as<T>;
+    };
     namespace misc {
         template <typename T = uint64_t> requires (std::is_integral<T>::value && std::is_unsigned<T>::value)
         T to_uint(const char *str) {
@@ -468,9 +472,9 @@ namespace diff {
     }
     template <numeric T, callret<T> F>
     requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T simpquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
-        uint64_t *mdepth = nullptr/*, std::ofstream *out = nullptr*/) {
-        if (b <= a || tol <= 0/* || !out*/)
+    HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
+        T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
+        if (b <= a || abstol <= 0 || reltol < 0 || reltol >= 1)
             return std::numeric_limits<T>::quiet_NaN();
         struct fm3fb_val {
             T fm3;
@@ -498,15 +502,16 @@ namespace diff {
         T res = 0;
         bool left = false;
         uint64_t bitmask;
+        T absval;
 #define CROSS std::abs(dxo2*((fm2 - fb) + (fm2 - fa)))
 #define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
         while (1) { \
             par1 \
             faPfb = fa + fb; \
-            estimate = dxo6*(fa + 4*fm2 + fb); \
-            ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); \
+            estimate = dxo6*(faPfb + 4*fm2); \
+            ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3); \
             par2 \
-            if (std::abs(ires - estimate) > tol) { \
+            if ((absval = std::abs(ires - estimate)) > abstol && absval > std::abs(reltol*ires)) { \
                 /*printf("if\n");*/ \
                 lab1: \
                 dx = dxo2; \
@@ -514,7 +519,7 @@ namespace diff {
                 dxo4 /= 2; \
                 dxo6 = dxo12; \
                 dxo12 /= 2; \
-                tol /= 2; \
+                abstol /= 2; \
                 par0 \
                 b = m2; \
                 m2 -= dxo2; \
@@ -581,7 +586,7 @@ namespace diff {
                         dx *= 2; \
                         dxo12 = dxo6; \
                         dxo6 *= 2; \
-                        tol *= 2; \
+                        abstol *= 2; \
                         par00 \
                         bitmask = (1ull << ((stack.size() - 1) % 64)); \
                         if (bitmask == 9'223'372'036'854'775'808u) \
@@ -646,6 +651,200 @@ namespace diff {
                                   if ((_s = stack.size()) == max_depth)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_5;},
                                   EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
+                }
+            } else {
+                gtd::stack<uint64_t> tree{8};
+                TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+            }
+        }
+#undef TRAPQUAD_LOOP
+#undef CROSS
+        return res; // for completeness, but would never be reached
+    }
+    template <numeric T, calldblret<T> F, callret<T> GH>
+    requires (std::is_floating_point<T>::value)
+    HOST_DEVICE T simpdblquad(const F &f, T ya, T yb, const GH &gfunc, const GH &hfunc, T tol = 0.0625l/1024.0l,
+        T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth_y = nullptr, uint64_t *mdepth_x = nullptr) {
+        if (yb <= ya || tol <= 0)
+            return std::numeric_limits<T>::quiet_NaN();
+        struct fym3fyb_val {
+            T fym3;
+            T fyb;
+        } fym3fyb;
+        gtd::stack<fym3fyb_val> stack;
+        // T global_range = b - a;
+        // T global_b = b;
+        T dy = yb - ya;
+        T dyo2 = dy/2;
+        T dyo4 = dy/4;
+        T dyo6 = dy/6;
+        T dyo12 = dy/12;
+        T ym2 = (ya + yb)/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        T y;
+        auto fy_lam = [&f, &y](T x){return f(x, y);};
+        y = ya;
+        T fya = simpquad(fy_lam, gfunc(ya), hfunc(ya), tol, ptol, mdepth_x);
+        y = ym1;
+        T fym1 = f(ym1);
+        T fym2 = f(ym2);
+        T fym3 = f(ym3);
+        T fyb = f(yb);
+        T fyaPfyb;
+        T estimate;
+        T ires;
+        T res = 0;
+        bool left = false;
+        uint64_t bitmask;
+#define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
+#define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+        while (1) { \
+            par1 \
+            fyaPfyb = fya + fyb; \
+            estimate = dyo6*(fyaPfyb + 4*fym2); \
+            ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3); \
+            par2 \
+            if (std::abs(ires - estimate) > tol) { \
+                /*printf("if\n");*/ \
+                lab1: \
+                dy = dyo2; \
+                dyo2 = dyo4; \
+                dyo4 /= 2; \
+                dyo6 = dyo12; \
+                dyo12 /= 2; \
+                tol /= 2; \
+                par0 \
+                yb = ym2; \
+                ym2 -= dyo2; \
+                ym1 -= dyo4; \
+                ym3 = ym2 + dyo4; \
+                fym3fyb.fym3 = fym3; \
+                fym3fyb.fyb = fyb; \
+                stack.push(fym3fyb); \
+                fyb = fym2; \
+                fym2 = fym1; \
+                fym1 = f(ym1); \
+                fym3 = f(ym3); \
+                left = true; \
+                if ((stack.size()) > tree.size()*64) { \
+                    tree.push(); \
+                } \
+                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
+                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
+                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
+                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
+            } \
+            else { \
+                /*printf("----------else-----------\n");*/ \
+                lab2: \
+                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
+                /*out->write((char *) &a, sizeof(T));*/ \
+                /*out->write((char *) &m, sizeof(T));*/ \
+                /*out->write((char *) &b, sizeof(T));*/ \
+                res += ires; \
+                if (left) { \
+                    /*printf("else -> if\n");*/ \
+                    ya = yb; \
+                    ym1 += dy; \
+                    ym2 += dy; \
+                    ym3 += dy; \
+                    yb += dy; \
+                    fya = fyb; \
+                    fym1 = f(ym1); \
+                    fym3 = f(ym3); \
+                    fym3fyb = stack.top(); \
+                    fym2 = fym3fyb.fym3; \
+                    fyb = fym3fyb.fyb; \
+                    left = false; \
+                    tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
+                } \
+                else { \
+                    /*printf("else -> else\n");*/ \
+                    /*if (b + dx > global_b)*/ \
+                        /*return res;*/ \
+                    if (!stack) \
+                        return res; \
+                    par3 \
+                    do { \
+                        stack.pop(); \
+                        if (!stack) \
+                            return res; \
+                        tree.top() &= ~(1ull << (stack.size() % 64)); \
+                        ym2 = ya; \
+                        ya -= dy; \
+                        ym1 = ya + dyo2; \
+                        ym3 = ym1 + dy; \
+                        dyo4 = dyo2; \
+                        dyo2 = dy; \
+                        dy *= 2; \
+                        dyo12 = dyo6; \
+                        dyo6 *= 2; \
+                        tol *= 2; \
+                        par00 \
+                        bitmask = (1ull << ((stack.size() - 1) % 64)); \
+                        if (bitmask == 9'223'372'036'854'775'808u) \
+                            tree.pop(); \
+                        /*printf("stack.size(): %" PRIu64 ", tree.top(): %" PRIu64 ", bitmask: %" PRIu64 "\n",*/ \
+                        /*stack.size(), tree.top(), bitmask); */\
+                    } while ((tree.top() & bitmask) > 0); \
+                    ya = yb; \
+                    ym1 += dy; \
+                    ym2 += dy; \
+                    ym3 += dy; \
+                    yb += dy; \
+                    fya = fyb; \
+                    fym1 = f(ym1); \
+                    fym3 = f(ym3); \
+                    fym3fyb = stack.top(); \
+                    fym2 = fym3fyb.fym3; \
+                    fyb = fym3fyb.fyb; \
+                    left = false; \
+                    tree.top() |= bitmask; \
+                } \
+            } \
+        }
+        if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+            if (mdepth_y) {
+                uint64_t _s;
+                if (*mdepth_y == NO_MAX_DEPTH) {
+                    *mdepth_y = 0;
+                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
+                                  if (CROSS <= ptol) {goto divide_1;},
+                                  if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;}, divide_1, other_1)
+                } else {
+                    uint64_t max_depth = *mdepth_y;
+                    *mdepth_y = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                                  if ((_s = stack.size()) == max_depth)
+                                  {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_2;},
+                                  if (CROSS <= ptol) {goto divide_2;},
+                                  if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_2, other_2)
+                }
+            } else {
+                gtd::stack<uint64_t> tree{8};
+                TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                              EMPTY, if (CROSS <= ptol) {goto divide_3;},
+                              EMPTY, divide_3, other_3)
+            }
+        } else {
+            if (mdepth_y) {
+                uint64_t _s;
+                if (*mdepth_y == NO_MAX_DEPTH) {
+                    *mdepth_y = 0;
+                    gtd::stack<uint64_t> tree{8};
+                    TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
+                                  if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;}, divide_4, other_4)
+                } else {
+                    uint64_t max_depth = *mdepth_y;
+                    *mdepth_y = 0;
+                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                    TRAPQUAD_LOOP(EMPTY, EMPTY,
+                                  if ((_s = stack.size()) == max_depth)
+                                  {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_5;},
+                                  EMPTY, if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_5, other_5)
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};

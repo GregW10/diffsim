@@ -11,7 +11,7 @@ public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
         ++times_called;
         DBL val = x;
-        return std::sin(x);
+        return std::sin(1/x);
     }
     uint64_t reset() const noexcept {
         uint64_t val = times_called;
@@ -38,8 +38,8 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 #endif
 
 int main(int argc, char **argv) {
-    DBL a = 0.0000;
-    DBL b = 2*PI;
+    DBL a = 0.001;
+    DBL b = 4*PI;
     uint64_t num = 10'000'000;
     uint64_t mdepth = 32;
     // char *endptr;
@@ -49,8 +49,9 @@ int main(int argc, char **argv) {
     // if (endptr == *(argv + 1))
     //     return 1;
     Functor functor;
-    DBL tol = (1/65536.0l)/65536.0l;
-    DBL ptol = 0.00000000001;///16.0;
+    DBL abstol = (1/65536.0l)/65536.0l;
+    DBL reltol = 0.000000000001l;
+    DBL ptol = -0.00000000001;///16.0;
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);
@@ -71,13 +72,13 @@ int main(int argc, char **argv) {
     // functor.reset();
     /*std::ofstream out{"intervals.bin", std::ios_base::out | std::ios_base::binary | std::ios_base::trunc};*/
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad(functor, a, b, tol, ptol, &mdepth/*, &out*/);
+    DBL trapnr = diff::trapquad(functor, a, b, abstol, ptol, &mdepth/*, &out*/);
     end = std::chrono::high_resolution_clock::now();
     /*out.close();*/
     uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     start = std::chrono::high_resolution_clock::now();
-    DBL simpr = diff::simpquad(functor, a, b, tol, ptol, &mdepth_s/*, &out*/);
+    DBL simpr = diff::simpquad(functor, a, b, abstol, reltol, ptol, &mdepth_s/*, &out*/);
     end = std::chrono::high_resolution_clock::now();
     /*out.close();*/
     uint64_t fc_simpr = functor.reset();
@@ -88,14 +89,14 @@ int main(int argc, char **argv) {
            "Num. func. calls = %" PRIu64 "\n\n"
            "Non-recursive quad-trap:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\tMax. depth = %" PRIu64
            "\n\tTime taken = %.20lf s\n\tNum. func. calls = %" PRIu64 "\n\n",
-           num, trap, trap_time.count()/((DBL) BILLION), fc_trap, tol, quad, quad_time.count()/((DBL) BILLION),
-           fc_trapr, tol, trapnr, mdepth, nr_time.count()/((double) BILLION), fc_trapi);
+           num, trap, trap_time.count()/((DBL) BILLION), fc_trap, abstol, quad, quad_time.count()/((DBL) BILLION),
+           fc_trapr, abstol, trapnr, mdepth, nr_time.count()/((double) BILLION), fc_trapi);
     printf("Simpson's Rule:\n\tNum. parabolas = %" PRIu64 "\n\tResult = %.20lf\n\tTime taken = %.20lf s\n\t"
                                                           "Num. func. calls = %" PRIu64 "\n\n",
         num, simpson, simp_time.count()/((DBL) BILLION), fc_simps);
-    printf("Simpson's AQ Rule:\n\tTolerance = %.20lf\n\tResult = %.20lf\n\t"
+    printf("Simpson's AQ Rule:\n\tAbs. Tolerance = %.20lf\n\tRel. Tolerance = %.20lf\n\tResult = %.20lf\n\t"
            "Max. depth = %" PRIu64 "\n\tTime taken = %.20lf s\n\tNum. func. calls = %" PRIu64 "\n\n",
-        tol, simpr, mdepth_s, simpr_time.count()/((DBL) BILLION), fc_simpr);
+        abstol, reltol, simpr, mdepth_s, simpr_time.count()/((DBL) BILLION), fc_simpr);
 #ifdef __CUDACC__
     dim3 blockSize{1, 1};
     dim3 gridSize{1, 1};
