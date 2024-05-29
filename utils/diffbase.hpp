@@ -305,8 +305,11 @@ namespace diff {
         uint64_t *mdepth = nullptr) {
         if (b < a || tol <= 0)
             return std::numeric_limits<T>::quiet_NaN();
-        if (a == b) // zero width = zero area, so might as well save some computation below
+        if (a == b) { // zero width = zero area, so might as well save some computation below
+            if (mdepth)
+                *mdepth = 0;
             return 0;
+        }
         gtd::stack<T> stack;
         // T global_range = b - a;
         // T global_b = b;
@@ -478,8 +481,11 @@ namespace diff {
         T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
         if (b < a || abstol <= 0 || reltol < 0 || reltol >= 1)
             return std::numeric_limits<T>::quiet_NaN();
-        if (a == b) // zero width = zero area, so might as well save some computation below
+        if (a == b) {// zero width = zero area, so might as well save some computation below
+            if (mdepth)
+                *mdepth = 0;
             return 0;
+        }
         struct fm3fb_val {
             T fm3;
             T fb;
@@ -688,6 +694,8 @@ namespace diff {
             T fym3;
             T fyb;
         } fym3fyb;
+#define XDEPTH /*printf("maxx_depth: %" PRIu64 "\n", maxx_depth);*/ if (maxx_depth > *mdepth_x) *mdepth_x = maxx_depth; maxx_depth = org_mxd; /*printf("*mdepth_x: %" PRIu64 "\n", *mdepth_x);*/
+#define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
         gtd::stack<fym3fyb_val> stack;
         // T global_range = b - a;
         // T global_b = b;
@@ -701,18 +709,6 @@ namespace diff {
         T ym3 = ym2 + dyo4;
         T y;
         auto fy_lam = [&f, &y](T x){return f(x, y);};
-        y = ya;
-        //printf("Before ya\n");
-        T fya = simpquad(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, mdepth_x);
-        //printf("after ya\n");
-        y = ym1;
-        T fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x);
-        y = ym2;
-        T fym2 = simpquad(fy_lam, gfunc(ym2), hfunc(ym2), abstol_x, reltol_x, ptol_x, mdepth_x);
-        y = ym3;
-        T fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x);
-        y = yb;
-        T fyb = simpquad(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mdepth_x);
         //printf("fya: %lf, fym1: %lf, fym2: %lf, fym3: %lf, fyb: %lf\n", fya, fym1, fym2, fym3, fyb);
         T fyaPfyb;
         T estimate;
@@ -721,8 +717,23 @@ namespace diff {
         bool left = false;
         uint64_t bitmask;
         T absval;
-#define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
-#define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+        T fya;
+        T fym1;
+        T fym2;
+        T fym3;
+        T fyb;
+        uint64_t *mptr;
+#define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after) \
+        y = ya; \
+        fya = simpquad(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, mptr); after \
+        y = ym1; \
+        fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mptr); after \
+        y = ym2; \
+        fym2 = simpquad(fy_lam, gfunc(ym2), hfunc(ym2), abstol_x, reltol_x, ptol_x, mptr); after \
+        y = ym3; \
+        fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
+        y = yb; \
+        fyb = simpquad(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr); after \
         while (1) { \
             par1 \
             fyaPfyb = fya + fyb; \
@@ -749,9 +760,9 @@ namespace diff {
                 fyb = fym2; \
                 fym2 = fym1; \
                 y = ym1; \
-                fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mptr); after \
                 y = ym3; \
-                fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
                 left = true; \
                 if ((stack.size()) > tree.size()*64) { \
                     tree.push(); \
@@ -778,9 +789,9 @@ namespace diff {
                     yb += dy; \
                     fya = fyb; \
                     y = ym1; \
-                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mptr); after \
                     y = ym3; \
-                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
                     fym3fyb = stack.top(); \
                     fym2 = fym3fyb.fym3; \
                     fyb = fym3fyb.fyb; \
@@ -823,9 +834,9 @@ namespace diff {
                     yb += dy; \
                     fya = fyb; \
                     y = ym1; \
-                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    fym1 = simpquad(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, mptr); after \
                     y = ym3; \
-                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mdepth_x); \
+                    fym3 = simpquad(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
                     fym3fyb = stack.top(); \
                     fym2 = fym3fyb.fym3; \
                     fyb = fym3fyb.fyb; \
@@ -838,50 +849,132 @@ namespace diff {
             if (mdepth_y) {
                 uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
-                    *mdepth_y = 0;
-                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                    TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;, EMPTY,
-                                  if (CROSS <= ptol_y) {goto divide_1;},
-                                  if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;}, divide_1, other_1)
+                    if (mdepth_x) {
+                        uint64_t maxx_depth = *mdepth_x;
+                        const uint64_t org_mxd = *mdepth_x;
+                        *mdepth_x = 0;
+                        mptr = &maxx_depth;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
+                        SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;, EMPTY,
+                                         if (CROSS <= ptol_y) {goto divide_11;},
+                                         if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;},
+                                         divide_11, other_11, XDEPTH)
+                    } else {
+                        mptr = nullptr;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
+                        SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;, EMPTY,
+                                         if (CROSS <= ptol_y) {goto divide_12;},
+                                         if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;},
+                                         divide_12, other_12, EMPTY)
+                    }
                 } else {
-                    uint64_t max_depth = *mdepth_y;
-                    *mdepth_y = 0;
-                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;,
-                                  if ((_s = stack.size()) == max_depth)
-                                  {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_2;},
-                                  if (CROSS <= ptol_y) {goto divide_2;},
-                                  if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_2, other_2)
+                    if (mdepth_x) {
+                        uint64_t maxx_depth = *mdepth_x;
+                        const uint64_t org_mxd = *mdepth_x;
+                        *mdepth_x = 0;
+                        mptr = &maxx_depth;
+                        uint64_t max_depth = *mdepth_y;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                        SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;,
+                                         if ((_s = stack.size()) == max_depth)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_21;},
+                                         if (CROSS <= ptol_y) {goto divide_21;},
+                                         if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_21, other_21, XDEPTH)
+                    } else {
+                        mptr = nullptr;
+                        uint64_t max_depth = *mdepth_y;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                        SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;,
+                                         if ((_s = stack.size()) == max_depth)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_22;},
+                                         if (CROSS <= ptol_y) {goto divide_22;},
+                                         if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_22, other_22, EMPTY)
+                    }
                 }
             } else {
-                gtd::stack<uint64_t> tree{8};
-                TRAPQUAD_LOOP(ptol_y /= 2;, ptol_y *= 2;,
-                              EMPTY, if (CROSS <= ptol_y) {goto divide_3;},
-                              EMPTY, divide_3, other_3)
+                if (mdepth_x) {
+                    uint64_t maxx_depth = *mdepth_x;
+                    const uint64_t org_mxd = *mdepth_x;
+                    *mdepth_x = 0;
+                    mptr = &maxx_depth;
+                    gtd::stack<uint64_t> tree{8};
+                    SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;,
+                                     EMPTY, if (CROSS <= ptol_y) {goto divide_31;},
+                                     EMPTY, divide_31, other_31, XDEPTH)
+                } else {
+                    mptr = nullptr;
+                    gtd::stack<uint64_t> tree{8};
+                    SIMPDBLQUAD_MOST(ptol_y /= 2;, ptol_y *= 2;,
+                                     EMPTY, if (CROSS <= ptol_y) {goto divide_32;},
+                                     EMPTY, divide_32, other_32, EMPTY)
+                }
             }
         } else {
             if (mdepth_y) {
                 uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
-                    *mdepth_y = 0;
-                    gtd::stack<uint64_t> tree{8};
-                    TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
-                                  if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;}, divide_4, other_4)
+                    if (mdepth_x) {
+                        uint64_t maxx_depth = *mdepth_x;
+                        const uint64_t org_mxd = *mdepth_x;
+                        *mdepth_x = 0;
+                        mptr = &maxx_depth;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{8};
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY,
+                                         if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;},
+                                         divide_41, other_41, XDEPTH)
+                    } else {
+                        mptr = nullptr;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{8};
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY,
+                                         if ((_s = stack.size()) > *mdepth_y) {*mdepth_y = _s;},
+                                         divide_42, other_42, EMPTY)
+                    }
                 } else {
-                    uint64_t max_depth = *mdepth_y;
-                    *mdepth_y = 0;
-                    gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    TRAPQUAD_LOOP(EMPTY, EMPTY,
-                                  if ((_s = stack.size()) == max_depth)
-                                  {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_5;},
-                                  EMPTY, if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_5, other_5)
+                    if (mdepth_x) {
+                        uint64_t maxx_depth = *mdepth_x;
+                        const uint64_t org_mxd = *mdepth_x;
+                        *mdepth_x = 0;
+                        mptr = &maxx_depth;
+                        uint64_t max_depth = *mdepth_y;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                         if ((_s = stack.size()) == max_depth)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_51;},
+                                         EMPTY, if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_51, other_51, XDEPTH)
+                    } else {
+                        mptr = nullptr;
+                        uint64_t max_depth = *mdepth_y;
+                        *mdepth_y = 0;
+                        gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                         if ((_s = stack.size()) == max_depth)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_52;},
+                                         EMPTY, if (_s > *mdepth_y) {*mdepth_y = _s;}, divide_52, other_52, EMPTY)
+                    }
                 }
             } else {
-                gtd::stack<uint64_t> tree{8};
-                TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+                if (mdepth_x) {
+                    uint64_t maxx_depth = *mdepth_x;
+                    const uint64_t org_mxd = *mdepth_x;
+                    *mdepth_x = 0;
+                    mptr = &maxx_depth;
+                    gtd::stack<uint64_t> tree{8};
+                    SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_61, other_61, XDEPTH)
+                } else {
+                    mptr = nullptr;
+                    gtd::stack<uint64_t> tree{8};
+                    SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_62, other_62, EMPTY)
+                }
             }
         }
-#undef TRAPQUAD_LOOP
+#undef SIMPDBLQUAD_MOST
 #undef CROSS
         return res; // for completeness, but would never be reached
     }
