@@ -141,165 +141,8 @@ namespace diff {
         }
         return res_or_tol;
     }
-    /* template <numeric T, callret<T> F, uint64_t max_depth = 256, bool use_ptol = true>
-    requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 0, uint64_t *mdepth = nullptr) {
-        if (tol < 0)
-            return std::numeric_limits<T>::quiet_NaN();
-        if constexpr (use_ptol)
-            if (ptol < 0)
-                return std::numeric_limits<T>::quiet_NaN();
-        if (mdepth)
-            *mdepth = 0;
-        struct func_vals {
-            T fm;
-            T fb;
-        } fmfb_val;
-        gtd::stack<func_vals> stack;
-        uint64_t tree[(max_depth % 64) ? max_depth/64 + 1 : max_depth/64]{}; // fixed at compile-time
-        const T global_a = a;
-        const T global_b = b;
-        T m = (a + b)/2;
-        T f_a = f(a);
-        T f_m = f(m);
-        T f_b = f(b);
-        T res = 0;
-        T ires; // intermediate result
-        T estimate;
-        // T error;
-        T dx = b - a;
-        T dxo2 = dx/2;
-        T dxo4 = dx/4;
-        uint64_t depth = 0;
-        bool left = false;
-        T numdx;
-        T whole;
-        T f_aPf_b;
-        do {
-            start:
-            // f_a = f(a);
-            // f_m = f(m);
-            // f_b = f(b);
-            f_aPf_b = f_a + f_b;
-            estimate = dxo2*f_aPf_b;
-            ires = dxo4*(f_aPf_b + 2*f_m);
-            if constexpr (max_depth)
-                if (depth == max_depth)
-                    goto other;
-            if constexpr (use_ptol)
-                if (std::abs(f_m - f_a) <= ptol && std::abs(f_b - f_m) <= ptol) // < 2*ptol
-                    goto divide;
-            if (abs(estimate - ires) > tol) {
-                divide:
-                printf("Split into two.\n");
-                dx = dxo2;
-                dxo2 = dxo4;
-                dxo4 /= 2;
-                // dx /= 2;
-                tol /= 2;
-                if constexpr (use_ptol)
-                    ptol /= 2;
-                left = true;
-                b = m;
-                // m = (a + b)/2; // simplify later
-                m -= dxo2;
-                fmfb_val.fm = f_m;
-                fmfb_val.fb = f_b;
-                stack.push(fmfb_val);
-                f_b = f_m;
-                f_m = f(m);
-                ++depth;
-                // goto start;
-            } else {
-                other:
-                // printf("a: %lf, b: %lf\n", a, b);
-                res += ires;
-                if (left) {
-                    printf("else -> if (left)\n");
-                    a = b;
-                    // a += dx;
-                    m += dx;
-                    b += dx;
-                    f_a = f_b;
-                    printf("Size of stack: %" PRIu64 "\n", stack.size());
-                    f_m = f(m);
-                    f_b = f(b);
-                    // printf("f(m) = %lf, top: %lf\n", f_m, stack.top().fm);
-                    printf("f(b) = %lf, top: %lf\n", f_b, stack.top().fb);
-                    fmfb_val = stack.pop_r();
-                    f_m = fmfb_val.fm;
-                    f_b = fmfb_val.fb;
-                    // f_b = stack.top().fb;
-                    // stack.top().fm = f_m;
-                    left = false;
-                    if constexpr (max_depth)
-                        tree[depth/64] |= (1 << (depth % 64));
-                    // goto start;
-                } else {
-                    printf("else -> else\n");
-                    if (mdepth)
-                        if (depth > *mdepth)
-                            *mdepth = depth;
-                    if (b + dx > global_b)
-                        return res;
-                    if constexpr (max_depth) {
-                        do {
-                            tree[depth/64] &= ~(1 << (depth % 64));
-                            if (!--depth)
-                                return res;
-                            a -= dx;
-                            dxo4 = dxo2;
-                            dxo2 = dx;
-                            dx *= 2;
-                            tol *= 2;
-                            if constexpr (use_ptol)
-                                ptol *= 2;
-                            f_m = stack.pop_r().fb;
-                            printf("Stack size: %" PRIu64 ", depth: %" PRIu64 "\n", stack.size(), depth);
-                        } while (tree[depth/64] & (1 << (depth % 64)));
-                        tree[depth/64] |= (1 << (depth % 64));
-                    } else {
-                        do {
-                            if (!--depth)
-                                return res;
-                            // a -= dx;
-                            dxo4 = dxo2;
-                            dxo2 = dx;
-                            dx *= 2;
-                            tol *= 2;
-                            if constexpr (use_ptol)
-                                ptol *= 2;
-                            f_m = stack.pop_r().fb;
-                            numdx = (b - global_a)/dx;
-                            // printf("numdx: %lf\n", numdx);
-                            whole = std::round(numdx);
-                        } while (std::abs(whole - numdx) > 0.25);
-                    }
-                    // a += dx;
-                    a = b;
-                    // b += dx/2;
-                    b += dx;
-                    // if (b > global_b)
-                    //     return res;
-                    m = (a + b)/2;
-                    f_a = f_b;
-                    f_b = f_m;
-                    f_m = f(m);
-                    fmfb_val.fm = f_m;
-                    fmfb_val.fb = f_b;
-                    stack.push(fmfb_val);
-                    // f_b = f(b);
-                    left = false;
-                }
-            }
-            // printf("Depth: %" PRIu64 ", a: %lf, b: %lf, dx: %lf\n", depth, a, b, dx);
-            // sleep(1);
-        } while (depth);
-        std::cout << "Size of stack: " << stack.size() << std::endl;
-        return res;
-    } */
 #define NO_MAX_DEPTH ((uint64_t) -1)
-    template <numeric T, callret<T> F>
+    template <numeric T, callret<T> F, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
         uint64_t *mdepth = nullptr) {
@@ -311,9 +154,9 @@ namespace diff {
             return 0;
         }
         gtd::stack<T> stack;
-        // T global_range = b - a;
-        // T global_b = b;
-        T dx = b - a;
+        T global_range = b - a;
+        T global_a = a;
+        T dx = global_range;
         T dxo2 = dx/2;
         T dxo4 = dx/4;
         T m = (a + b)/2;
@@ -335,7 +178,6 @@ namespace diff {
             ires = dxo4*(faPfb + 2*fm); \
             par2 \
             if (std::abs(ires - estimate) > tol) { \
-                /*printf("if\n");*/ \
                 lab1: \
                 dx = dxo2; \
                 dxo2 = dxo4; \
@@ -351,21 +193,15 @@ namespace diff {
                 if ((stack.size()) > tree.size()*64) { \
                     tree.push(); \
                 } \
-                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
-                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
-                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
-                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
             } \
             else { \
-                /*printf("----------else-----------\n");*/ \
                 lab2: \
-                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
-                /*out->write((char *) &a, sizeof(T));*/ \
-                /*out->write((char *) &m, sizeof(T));*/ \
-                /*out->write((char *) &b, sizeof(T));*/ \
                 res += ires; \
+                if constexpr (prog) { \
+                    printf("%.5Lf%% complete\r", ((((long double) b) - global_a)/global_range)*100); \
+                    fflush(stdout); \
+                } \
                 if (left) { \
-                    /*printf("else -> if\n");*/ \
                     a = b; \
                     m += dx; \
                     b += dx; \
@@ -376,16 +212,19 @@ namespace diff {
                     tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
                 } \
                 else { \
-                    /*printf("else -> else\n");*/ \
-                    /*if (b + dx > global_b)*/ \
-                        /*return res;*/ \
-                    if (!stack) \
+                    if (!stack) { \
+                        if constexpr (prog) \
+                            putchar('\n'); \
                         return res; \
+                    } \
                     par3 \
                     do { \
                         stack.pop(); \
-                        if (!stack) \
+                        if (!stack) { \
+                            if constexpr (prog) \
+                                putchar('\n'); \
                             return res; \
+                        } \
                         tree.top() &= ~(1ull << (stack.size() % 64)); \
                         m = a; \
                         a -= dx; \
@@ -397,8 +236,6 @@ namespace diff {
                         bitmask = (1ull << ((stack.size() - 1) % 64)); \
                         if (bitmask == 9'223'372'036'854'775'808u) \
                             tree.pop(); \
-                        /*printf("stack.size(): %" PRIu64 ", tree.top(): %" PRIu64 ", bitmask: %" PRIu64 "\n",*/ \
-                        /*stack.size(), tree.top(), bitmask); */\
                     } while ((tree.top() & bitmask) > 0); \
                     a = b; \
                     m += dx; \
@@ -458,6 +295,8 @@ namespace diff {
         }
 #undef TRAPQUAD_LOOP
 #undef CROSS
+        if constexpr (prog)
+            putchar('\n');
         return res; // for completeness, but would never be reached
     }
     template <numeric T, callret<T> F>
@@ -475,7 +314,7 @@ namespace diff {
         res *= dx/3;
         return res;
     }
-    template <numeric T, callret<T> F>
+    template <numeric T, callret<T> F, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
         T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
@@ -491,9 +330,9 @@ namespace diff {
             T fb;
         } fm3fb;
         gtd::stack<fm3fb_val> stack;
-        // T global_range = b - a;
-        // T global_b = b;
-        T dx = b - a;
+        T global_range = b - a;
+        T global_a = a;
+        T dx = global_range;
         T dxo2 = dx/2;
         T dxo4 = dx/4;
         T dxo6 = dx/6;
@@ -514,7 +353,7 @@ namespace diff {
         uint64_t bitmask;
         T absval;
 #define CROSS std::abs(dxo2*((fm2 - fb) + (fm2 - fa)))
-#define TRAPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+#define SIMPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
         while (1) { \
             par1 \
             faPfb = fa + fb; \
@@ -522,7 +361,6 @@ namespace diff {
             ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3); \
             par2 \
             if ((absval = std::abs(ires - estimate)) > abstol && absval > std::abs(reltol*ires)) { \
-                /*printf("if\n");*/ \
                 lab1: \
                 dx = dxo2; \
                 dxo2 = dxo4; \
@@ -546,21 +384,15 @@ namespace diff {
                 if ((stack.size()) > tree.size()*64) { \
                     tree.push(); \
                 } \
-                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
-                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
-                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
-                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
             } \
             else { \
-                /*printf("----------else-----------\n");*/ \
                 lab2: \
-                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
-                /*out->write((char *) &a, sizeof(T));*/ \
-                /*out->write((char *) &m, sizeof(T));*/ \
-                /*out->write((char *) &b, sizeof(T));*/ \
                 res += ires; \
+                if constexpr (prog) { \
+                    printf("%.5Lf%% complete\r", ((((long double) b) - global_a)/global_range)*100); \
+                    fflush(stdout); \
+                } \
                 if (left) { \
-                    /*printf("else -> if\n");*/ \
                     a = b; \
                     m1 += dx; \
                     m2 += dx; \
@@ -576,16 +408,19 @@ namespace diff {
                     tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
                 } \
                 else { \
-                    /*printf("else -> else\n");*/ \
-                    /*if (b + dx > global_b)*/ \
-                        /*return res;*/ \
-                    if (!stack) \
+                    if (!stack) { \
+                        if constexpr (prog) \
+                            putchar('\n'); \
                         return res; \
+                    } \
                     par3 \
                     do { \
                         stack.pop(); \
-                        if (!stack) \
+                        if (!stack) { \
+                            if constexpr (prog) \
+                                putchar('\n'); \
                             return res; \
+                        } \
                         tree.top() &= ~(1ull << (stack.size() % 64)); \
                         m2 = a; \
                         a -= dx; \
@@ -601,8 +436,6 @@ namespace diff {
                         bitmask = (1ull << ((stack.size() - 1) % 64)); \
                         if (bitmask == 9'223'372'036'854'775'808u) \
                             tree.pop(); \
-                        /*printf("stack.size(): %" PRIu64 ", tree.top(): %" PRIu64 ", bitmask: %" PRIu64 "\n",*/ \
-                        /*stack.size(), tree.top(), bitmask); */\
                     } while ((tree.top() & bitmask) > 0); \
                     a = b; \
                     m1 += dx; \
@@ -626,14 +459,14 @@ namespace diff {
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
+                    SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY,
                                   if (CROSS <= ptol) {goto divide_1;},
                                   if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_1, other_1)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                    SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
                                   if ((_s = stack.size()) == max_depth)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_2;},
                                   if (CROSS <= ptol) {goto divide_2;},
@@ -641,7 +474,7 @@ namespace diff {
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};
-                TRAPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
                               EMPTY, if (CROSS <= ptol) {goto divide_3;},
                               EMPTY, divide_3, other_3)
             }
@@ -651,27 +484,29 @@ namespace diff {
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8};
-                    TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
+                    SIMPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
                                   if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_4, other_4)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    TRAPQUAD_LOOP(EMPTY, EMPTY,
+                    SIMPQUAD_LOOP(EMPTY, EMPTY,
                                   if ((_s = stack.size()) == max_depth)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_5;},
                                   EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};
-                TRAPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+                SIMPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
             }
         }
-#undef TRAPQUAD_LOOP
+#undef SIMPQUAD_LOOP
 #undef CROSS
+        if constexpr (prog)
+            putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <numeric T, calldblret<T> F, callret<T> GH>
+    template <numeric T, calldblret<T> F, callret<T> GH, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpdblquad(const F &f,
                               T ya,
@@ -694,12 +529,12 @@ namespace diff {
             T fym3;
             T fyb;
         } fym3fyb;
-#define XDEPTH /*printf("maxx_depth: %" PRIu64 "\n", maxx_depth);*/ if (maxx_depth > *mdepth_x) *mdepth_x = maxx_depth; maxx_depth = org_mxd; /*printf("*mdepth_x: %" PRIu64 "\n", *mdepth_x);*/
+#define XDEPTH if (maxx_depth > *mdepth_x) *mdepth_x = maxx_depth; maxx_depth = org_mxd;
 #define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
         gtd::stack<fym3fyb_val> stack;
-        // T global_range = b - a;
-        // T global_b = b;
-        T dy = yb - ya;
+        T global_yrange = yb - ya;
+        T global_ya = ya;
+        T dy = global_yrange;
         T dyo2 = dy/2;
         T dyo4 = dy/4;
         T dyo6 = dy/6;
@@ -709,7 +544,6 @@ namespace diff {
         T ym3 = ym2 + dyo4;
         T y;
         auto fy_lam = [&f, &y](T x){return f(x, y);};
-        //printf("fya: %lf, fym1: %lf, fym2: %lf, fym3: %lf, fyb: %lf\n", fya, fym1, fym2, fym3, fyb);
         T fyaPfyb;
         T estimate;
         T ires;
@@ -741,7 +575,6 @@ namespace diff {
             ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3); \
             par2 \
             if ((absval = std::abs(ires - estimate)) > abstol_y && absval > reltol_y*ires) { \
-                /*printf("if\n");*/ \
                 lab1: \
                 dy = dyo2; \
                 dyo2 = dyo4; \
@@ -767,21 +600,15 @@ namespace diff {
                 if ((stack.size()) > tree.size()*64) { \
                     tree.push(); \
                 } \
-                /*printf("stack.size(): %" PRIu64 ", tree.size(): %" PRIu64 "\n", stack.size(), tree.size());*/ \
-                /*printf("a: %lf, m: %lf, b: %lf, dx: %lf, tol: %lf, diff: %lf, ptol: %lf, cross: %lf\n",*/ \
-                /*a, m, b, dx, tol, std::abs(ires - estimate), ptol, CROSS);*/ \
-                /* tree.top() |= 1 << ((stack.size() - 1) % 64); */ \
             } \
             else { \
-                /*printf("----------else-----------\n");*/ \
                 lab2: \
-                /*printf("%Lf%% complete\r", (((long double) b)/global_range)*100);*/ \
-                /*out->write((char *) &a, sizeof(T));*/ \
-                /*out->write((char *) &m, sizeof(T));*/ \
-                /*out->write((char *) &b, sizeof(T));*/ \
+                if constexpr (prog) { \
+                    printf("%.5Lf%% complete\r", ((((long double) yb) - global_ya)/global_yrange)*100); \
+                    fflush(stdout); \
+                } \
                 res += ires; \
                 if (left) { \
-                    /*printf("else -> if\n");*/ \
                     ya = yb; \
                     ym1 += dy; \
                     ym2 += dy; \
@@ -799,16 +626,19 @@ namespace diff {
                     tree.top() |= (1ull << ((stack.size() - 1) % 64)); \
                 } \
                 else { \
-                    /*printf("else -> else\n");*/ \
-                    /*if (b + dx > global_b)*/ \
-                        /*return res;*/ \
-                    if (!stack) \
+                    if (!stack) { \
+                        if constexpr (prog) \
+                            putchar('\n'); \
                         return res; \
+                    } \
                     par3 \
                     do { \
                         stack.pop(); \
-                        if (!stack) \
+                        if (!stack) { \
+                            if constexpr (prog) \
+                                putchar('\n'); \
                             return res; \
+                        } \
                         tree.top() &= ~(1ull << (stack.size() % 64)); \
                         ym2 = ya; \
                         ya -= dy; \
@@ -976,6 +806,8 @@ namespace diff {
         }
 #undef SIMPDBLQUAD_MOST
 #undef CROSS
+        if constexpr (prog)
+            putchar('\n');
         return res; // for completeness, but would never be reached
     }
 }

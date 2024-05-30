@@ -1,8 +1,9 @@
 #include "diffbase.hpp"
+#include <chrono>
 
-#define DBL long double
+#define DBL double
 
-#define DFORMAT "Lf"
+#define DFORMAT "lf"
 
 class Functor2D {
     mutable uint64_t times_called = 0;
@@ -49,15 +50,21 @@ int main(int argc, char **argv) {
     DBL yb = 2;
     DBL abstol_y = 0.0625l/102400000.0l;
     DBL reltol_y = 0.0625l/102400000.0l;
-    DBL ptol_y = 0.00000000000000001;
+    DBL ptol_y = 0.00000000000000000001;
     DBL abstol_x = 0.0625l/10240000000000000.0l;
     DBL reltol_x = 0.0625l/10240000000000000.0l;
-    DBL ptol_x = 0.00000000000000001;
-    DBL res = diff::simpdblquad(f, ya, yb, gfunc, hfunc, abstol_y, reltol_y, ptol_y, &mdepth_y,
+    DBL ptol_x = 0.0000000000000000000000001;
+    std::chrono::time_point<std::chrono::high_resolution_clock> start =
+            std::chrono::high_resolution_clock::now();
+    DBL res = diff::simpdblquad<DBL, Functor2D, decltype(gfunc), true>(f, ya, yb, gfunc, hfunc, abstol_y, reltol_y, ptol_y, &mdepth_y,
                                 abstol_x, reltol_x, ptol_x, &mdepth_x);
+    std::chrono::time_point<std::chrono::high_resolution_clock> end =
+            std::chrono::high_resolution_clock::now();
+    std::chrono::duration tot = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     printf("Result: %.20" DFORMAT "\n", res);
     printf("Num func. calls: %" PRIu64 "\n", f.ncalls());
     printf("Max. depth in y: %" PRIu64 "\n", mdepth_y);
     printf("Max. depth in x: %" PRIu64 "\n", mdepth_x);
+    std::cout << "Time taken: " << tot.count()/((long double) BILLION) << " s" << std::endl;
     return 0;
 }
