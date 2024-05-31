@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <cinttypes>
 #include <unistd.h>
-#include <fstream>
+// #include <fstream>
 
 #define ABS(num) ((num) >= 0 ? (num) : -(num))
 
@@ -88,10 +88,10 @@ namespace diff {
             }
             return str;
         }
-    }
-    template <numeric T>
-    HOST_DEVICE T abs(const T &num) {
-        return num >= 0 ? num : -num;
+        template <numeric T>
+        HOST_DEVICE T abs(const T &num) {
+            return num >= 0 ? num : -num;
+        }
     }
     template <numeric T, callret<T> F>
     HOST_DEVICE T integrate_trap(const F &f, const T &a, const T &b, uint64_t num = 1'000'000) {
