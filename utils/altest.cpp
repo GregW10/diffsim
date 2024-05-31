@@ -19,5 +19,7 @@ int main(int argc, char **argv) {
     gtd::write_all(fd, ptr, count);
     close(fd);
     delete [] ptr;
+    diff::diff_alloc<long double> alloc{2000, 2000};
+    std::cout << "Bytes written: " << alloc.to_dttr("test.dttr") << std::endl;
     return 0;
 }
