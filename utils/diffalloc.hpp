@@ -39,7 +39,7 @@ namespace diff {
 #else
     template <numeric T = long double>
 #endif
-    class diff_alloc {
+    class diffalloc {
     protected:
         uint64_t w{}; // width of detector (in pixels)
         uint64_t h{}; // height of detector (in pixels)
@@ -55,13 +55,16 @@ namespace diff {
 #endif
         bool on_cpu = false; // boolean indicating whether stored results are on the CPU
     public:
-        // diff_alloc() = default;
-        diff_alloc(uint64_t width, uint64_t height) : w{width}, h{height}, s{width*height} {
+        diffalloc() = default;
+        diffalloc(uint64_t width, uint64_t height) : w{width}, h{height}, s{width*height} {
 #ifdef __CUDACC__
             CUDA_ERROR(cudaMalloc(&gdat, nb));
             CUDA_ERROR(cudaMemset(gdat, 0, nb)); // zeros-out all allocated GPU memory
 #endif
             mapper.zero(); // zeros-out all allocated memory
+        }
+        explicit diffalloc(const char *dttr_path) {
+            this->from_dttr(dttr_path);
         }
 #ifdef __CUDACC__
         bool dev_to_host() {
@@ -74,53 +77,67 @@ namespace diff {
             return true;
         }
 #endif
-        uint64_t dtr_width() const noexcept {
+        uint64_t dttr_width() const noexcept {
             return this->w;
         }
-        uint64_t dtr_height() const noexcept {
+        uint64_t dttr_height() const noexcept {
             return this->h;
         }
-        uint64_t dtr_pixels() const noexcept {
+        uint64_t dttr_pixels() const noexcept {
             return this->s;
         }
-        uint64_t nbytes() const noexcept {
+        uint64_t dttr_bytes() const noexcept {
             return this->nb;
+        }
+        uint64_t dttr_size() const noexcept {
+            return 28 + this->nb;
         }
         uint64_t to_dttr(const char *path) {
             if (!path || !*path)
                 return 0;
 #ifdef __CUDACC__
-            if (!dev_to_host()) { // takes care of copying results to CPU if on GPU, and if not, returns false
-                return 0;
-            }
+            // if (!dev_to_host()) // takes care of copying results to CPU if on GPU, and if not, returns false
+                // return 0;
+            dev_to_host(); // copy results to CPU if on GPU
 #else
-            if (!on_cpu)
-                return 0; // because results have not yet been calculated
+            // if (on_cpu)
+                // return 0; // because results have not yet been calculated
 #endif
             int fd;
             if ((fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR)) == -1)
                 return 0;
-            uint64_t bwritten = 0;
+            uint64_t tot_written = 0;
+            uint64_t bwritten;
             char hdr[4] = {'D', 'T', 'T', 'R'};
             uint64_t sizeT = sizeof(T);
-            if (!gtd::write_all(fd, hdr, 4))
+            if ((bwritten = gtd::write_all(fd, hdr, 4)) != 4) {
+                tot_written += bwritten;
                 goto end;
-            bwritten += 4;
-            if (!gtd::write_all(fd, &this->w, sizeof(uint64_t)))
+            }
+            tot_written += 4;
+            if ((bwritten = gtd::write_all(fd, &this->w, sizeof(uint64_t))) != sizeof(uint64_t)) {
+                tot_written += bwritten;
                 goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, &this->h, sizeof(uint64_t)))
+            }
+            tot_written += sizeof(uint64_t);
+            if ((bwritten = gtd::write_all(fd, &this->h, sizeof(uint64_t))) != sizeof(uint64_t)) {
+                tot_written += bwritten;
                 goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, &sizeT, sizeof(uint64_t)))
+            }
+            tot_written += sizeof(uint64_t);
+            if ((bwritten = gtd::write_all(fd, &sizeT, sizeof(uint64_t))) != sizeof(uint64_t)) {
+                tot_written += bwritten;
                 goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, this->data, this->nb))
+            }
+            tot_written += sizeof(uint64_t);
+            if ((bwritten = gtd::write_all(fd, this->data, this->nb)) != this->nb) {
+                tot_written += bwritten;
                 goto end;
-            bwritten += this->nb;
+            }
+            tot_written += this->nb;
             end:
             close(fd);
-            return bwritten;
+            return tot_written;
         }
         uint64_t from_dttr(const char *path) {
             if (!path || !*path)
@@ -128,32 +145,54 @@ namespace diff {
             struct stat buff{};
             if (stat(path, &buff) == -1)
                 return 0;
+            if (buff.st_size < 28)
+                return 0;
             int fd;
             if ((fd = open(path, O_RDONLY)) == -1)
                 return 0;
-            uint64_t bwritten = 0;
-            char hdr[4] = {'D', 'T', 'T', 'R'};
-            uint64_t sizeT = sizeof(T);
-            if (!gtd::write_all(fd, hdr, 4))
-                goto end;
-            bwritten += 4;
-            if (!gtd::write_all(fd, &this->w, sizeof(uint64_t)))
-                goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, &this->h, sizeof(uint64_t)))
-                goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, &sizeT, sizeof(uint64_t)))
-                goto end;
-            bwritten += sizeof(uint64_t);
-            if (!gtd::write_all(fd, this->data, this->nb))
-                goto end;
-            bwritten += this->nb;
-            end:
+            uint64_t tot_read = 0;
+            uint64_t bread;
+            char info[28];
+            if ((bread = gtd::read_all(fd, info, 28)) != 28) {
+                close(fd);
+                return bread;
+            }
+            tot_read += bread;
+            if (info[0] != 'D' || info[1] != 'T' || info[2] != 'T' || info[3] != 'R') {
+                close(fd);
+                return tot_read;
+            }
+            if (*((uint64_t*) (info + 20)) != sizeof(T)) {
+                close(fd);
+                return tot_read;
+            }
+            this->w = *((uint64_t*) (info + 4));
+            this->h = *((uint64_t*) (info + 12));
+            uint64_t old_s = this->s;
+            this->s = this->w*this->h;
+            this->nb = this->s*sizeof(T);
+            if (buff.st_size != 28 + this->nb) {
+                close(fd);
+                return tot_read;
+            }
+            if (this->s != old_s) {
+                // delete [] data;
+                // data = new T[this->s];
+                mapper.reset(this->nb);
+                data = (T*) mapper.get();
+            }
+            if ((bread = gtd::read_all(fd, data, this->nb)) != this->nb) {
+                close(fd);
+                return tot_read + bread;
+            }
             close(fd);
-            return bwritten;
+            on_cpu = true;
+#ifdef __CUDACC__
+            on_gpu = false;
+#endif
+            return tot_read;
         }
-        ~diff_alloc() { // gtd::mmapper object takes care of the deallocation in its destructor
+        ~diffalloc() { // gtd::mmapper object takes care of the deallocation in its destructor
             // delete [] data;
 #ifdef __CUDACC__
             cudaFree(gdat); // no error handling, as I should not be throwing inside a destructor!

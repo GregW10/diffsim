@@ -1,4 +1,4 @@
-#include "diffalloc.hpp"
+#include "diffimg.hpp"
 
 int main(int argc, char **argv) {
     int num = -99999999;
@@ -19,7 +19,17 @@ int main(int argc, char **argv) {
     gtd::write_all(fd, ptr, count);
     close(fd);
     delete [] ptr;
-    diff::diff_alloc<long double> alloc{2000, 2000};
-    std::cout << "Bytes written: " << alloc.to_dttr("test.dttr") << std::endl;
+    diff::diffalloc<long double> alloc{};
+    std::cout << "Bytes written: " << alloc.to_dttr("t3.dttr") << std::endl;
+    std::cout << "Width: " << alloc.dttr_height() << std::endl;
+    std::cout << "Height: " << alloc.dttr_height() << std::endl;
+    std::cout << "Num. pixels: " << alloc.dttr_pixels() << std::endl;
+    std::cout << "Num. bytes: " << alloc.dttr_bytes() << std::endl;
+    diff::diffalloc<long double> alloc2{"t3.dttr"};
+    // std::cout << "Bytes read: " << alloc2.from_dttr("test.dttr") << std::endl;
+    std::cout << "Width: " << alloc2.dttr_height() << std::endl;
+    std::cout << "Height: " << alloc2.dttr_height() << std::endl;
+    std::cout << "Num. pixels: " << alloc2.dttr_pixels() << std::endl;
+    std::cout << "Num. bytes: " << alloc2.dttr_bytes() << std::endl;
     return 0;
 }
