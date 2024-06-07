@@ -35,9 +35,9 @@ namespace diff {
     }
 #endif
 #ifdef __CUDACC__
-    template <numeric T = double>
+    template <gtd::numeric T = double>
 #else
-    template <numeric T = long double>
+    template <gtd::numeric T = long double>
 #endif
     class diffalloc {
     protected:

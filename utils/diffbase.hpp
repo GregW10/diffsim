@@ -5,6 +5,7 @@
 #error OS not supported
 #endif
 
+#include "../glib/misc/gregmisc.hpp"
 #include "../glib/misc/gregstack.hpp"
 #include <climits>
 
@@ -25,18 +26,6 @@
 #define BILLION 1'000'000'000
 #define TRILLION 1'000'000'000'000
 #define QUADRILLION 1'000'000'000'000'000
-
-#ifdef __CUDACC__
-#define PI 3.14159265358979323846264338327950288419716939937510582097494459
-#define LIGHT_SPEED 299'792'458.0 // m/s
-#define PERMITTIVITY 0.0000000000088541878188 // F/m
-#define PERMEABILITY 0.00000125663706127 // F/m
-#else
-#define PI 3.14159265358979323846264338327950288419716939937510582097494459l
-#define LIGHT_SPEED 299'792'458.0l // m/s
-#define PERMITTIVITY 0.0000000000088541878188l // F/m
-#define PERMEABILITY 0.00000125663706127 // F/m
-#endif
 
 #define EMPTY
 
@@ -87,12 +76,12 @@ namespace diff {
             }
             return str;
         }
-        template <numeric T>
+        template <gtd::numeric T>
         HOST_DEVICE T abs(const T &num) {
             return num >= 0 ? num : -num;
         }
     }
-    template <numeric T, callret<T> F>
+    template <gtd::numeric T, callret<T> F>
     HOST_DEVICE T integrate_trap(const F &f, const T &a, const T &b, uint64_t num = 1'000'000) {
         T dx = (b - a)/num;
         T dx_o2 = dx/2;
@@ -106,7 +95,7 @@ namespace diff {
         }
         return res;
     }
-    template <numeric T, callret<T> F>
+    template <gtd::numeric T, callret<T> F>
     HOST_DEVICE T trapquad_recurse(const F &f, const T &a, const T &b, const T &tol, const T &ptol,
                                    const T &f_a, const T &f_b) {
         T f_aPf_b = f_a + f_b;
@@ -122,7 +111,7 @@ namespace diff {
         }
         return res_or_tol;
     }
-    template <numeric T, callret<T> F>
+    template <gtd::numeric T, callret<T> F>
     HOST_DEVICE T integrate_trapquad(const F &f, const T &a, const T &b, const T &tol = 0.0625l/1024.0l,
                                      const T &ptol = 0.0625l/4096.0l) {
         T f_a = f(a);
@@ -141,7 +130,7 @@ namespace diff {
         return res_or_tol;
     }
 #define NO_MAX_DEPTH ((uint64_t) -1)
-    template <numeric T, callret<T> F, bool prog = false>
+    template <gtd::numeric T, callret<T> F, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T trapquad(const F &f, T a, T b, T tol = 0.0625l/1024.0l, T ptol = 1/(1024.0l*1024.0l),
         uint64_t *mdepth = nullptr) {
@@ -298,7 +287,7 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <numeric T, callret<T> F>
+    template <gtd::numeric T, callret<T> F>
     HOST_DEVICE T integrate_simpson(const F &f, T a, T b, uint64_t num) {
         T dx = (b - a)/num;
         uint64_t i = 1;
@@ -313,7 +302,7 @@ namespace diff {
         res *= dx/3;
         return res;
     }
-    template <numeric T, callret<T> F, bool prog = false>
+    template <gtd::numeric T, callret<T> F, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
         T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
@@ -505,7 +494,7 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <numeric T, calldblret<T> F, callret<T> GH, bool prog = false>
+    template <gtd::numeric T, calldblret<T> F, callret<T> GH, bool prog = false>
     requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpdblquad(const F &f,
                               T ya,

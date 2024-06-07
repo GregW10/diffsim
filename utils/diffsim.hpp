@@ -9,16 +9,20 @@ namespace diff {
         invalid_diffparams() : std::logic_error{"Error: invalid diffraction simulation parameters.\n"} {}
         explicit invalid_diffparams(const char *msg) : std::logic_error{msg} {}
     };
-    template <numeric T>
+    template <gtd::numeric T>
     using xbfunc = T (*)(const T&);
-    template <numeric T>
+    template <gtd::numeric T>
     struct aperture {
         T ya;
         T yb;
         xbfunc<T> gfunc;
         xbfunc<T> hfunc;
     };
-    template <numeric T>
+    template <gtd::numeric T>
+    struct vector {
+        T x, y, z;
+    };
+    template <gtd::numeric T>
     class diffsim : public diffalloc<T> {
         T lambda; // wavelength of light
         aperture<T> ap; // aperture (slit)
@@ -26,6 +30,9 @@ namespace diff {
         T xdttr; // width of detector (along x)
         T ydttr; // length of detector (along y)
         T k; // wavenumber of light
+        vector<T> pix_to_pos(uint64_t i, uint64_t j) {
+
+        }
     public:
         diffsim() = delete;
         diffsim(const T &wavelength,
@@ -46,6 +53,7 @@ namespace diff {
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
+
     };
 }
 #endif
