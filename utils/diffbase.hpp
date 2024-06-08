@@ -5,7 +5,7 @@
 #error OS not supported
 #endif
 
-#include "../glib/misc/gregmisc.hpp"
+#include "../glib/misc/gregcomplex.hpp"
 #include "../glib/misc/gregstack.hpp"
 #include <climits>
 
@@ -80,6 +80,30 @@ namespace diff {
         HOST_DEVICE T abs(const T &num) {
             return num >= 0 ? num : -num;
         }
+    }
+    template <gtd::numeric T>
+    HOST_DEVICE T Efield_to_intensity(const T &Efield) {
+        return LIGHT_SPEED*PERMITTIVITY*Efield*Efield;
+    }
+    template <gtd::numeric T>
+    HOST_DEVICE T Efield_to_intensity(const gtd::complex<T> &Efield) {
+        return LIGHT_SPEED*PERMITTIVITY*static_cast<T>(Efield*Efield.conj()); // change to Efield.mag_sq()
+    }
+    template <gtd::numeric T> // impossible to recover phase information, so must return scalar (real)
+    HOST_DEVICE T intensity_to_Efield(const T &intensity) {
+        return std::sqrt(intensity/(LIGHT_SPEED*PERMITTIVITY));
+    }
+    template <gtd::numeric T>
+    HOST_DEVICE T E0_to_intensity(const T &E0) {
+        return 0.5l*LIGHT_SPEED*PERMITTIVITY*E0*E0;
+    }
+    template <gtd::numeric T>
+    HOST_DEVICE T E0_to_intensity(const gtd::complex<T> &E0) {
+        return 0.5l*LIGHT_SPEED*PERMITTIVITY*static_cast<T>(E0*E0.conj()); // change to Efield.mag_sq()
+    }
+    template <gtd::numeric T>
+    HOST_DEVICE T intensity_to_E0(const T &intensity) {
+        return std::sqrt((2*intensity)/(LIGHT_SPEED*PERMITTIVITY));
     }
     template <gtd::numeric T, callret<T> F>
     HOST_DEVICE T integrate_trap(const F &f, const T &a, const T &b, uint64_t num = 1'000'000) {
@@ -303,11 +327,12 @@ namespace diff {
         return res;
     }
     template <gtd::numeric T, callret<T> F, bool prog = false>
-    requires (std::is_floating_point<T>::value)
+    // requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
         T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
         if (b < a || abstol <= 0 || reltol < 0 || reltol >= 1)
-            return std::numeric_limits<T>::quiet_NaN();
+            throw std::invalid_argument{"Error: upper x-bound must be above lower x-bound, x-tolerance must be "
+                                        "positive and x-relative-tolerance must be in [0,1).\n"};
         if (a == b) {// zero width = zero area, so might as well save some computation below
             if (mdepth)
                 *mdepth = 0;
@@ -495,7 +520,7 @@ namespace diff {
         return res; // for completeness, but would never be reached
     }
     template <gtd::numeric T, calldblret<T> F, callret<T> GH, bool prog = false>
-    requires (std::is_floating_point<T>::value)
+    // requires (std::is_floating_point<T>::value)
     HOST_DEVICE T simpdblquad(const F &f,
                               T ya,
                               T yb,
@@ -509,8 +534,9 @@ namespace diff {
                               T reltol_x = 0.0625l/1024.0l,
                               T ptol_x = 1/(1024.0l*1024.0l),
                               uint64_t *mdepth_x = nullptr) {
-        if (yb <= ya || abstol_y <= 0)
-            return std::numeric_limits<T>::quiet_NaN();
+        if (yb <= ya || abstol_y <= 0 || reltol_y < 0 || reltol_y >= 1)
+            throw std::invalid_argument{"Error: upper y-bound must be above lower y-bound, y-tolerance must be "
+                                        "positive and y-relative-tolerance must be in [0,1).\n"};
         if (ya == yb) // zero width = zero area, so might as well save some computation below
             return 0;
         struct fym3fyb_val {

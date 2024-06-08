@@ -34,6 +34,10 @@ namespace diff {
         throw cuda_error{__LINE__, __FILE__, cudaGetErrorString(err)}; \
     }
 #endif
+    struct coord {
+        uint64_t x;
+        uint64_t y;
+    };
 #ifdef __CUDACC__
     template <gtd::numeric T = double>
 #else
@@ -41,12 +45,12 @@ namespace diff {
 #endif
     class diffalloc {
     protected:
-        uint64_t w{}; // width of detector (in pixels)
-        uint64_t h{}; // height of detector (in pixels)
-        uint64_t s{}; // total number of pixels in detector
-        uint64_t nb = s*sizeof(T); // total number of bytes allocated
+        uint64_t nw{}; // width of detector (in pixels)
+        uint64_t nh{}; // height of detector (in pixels)
+        uint64_t np{}; // total number of pixels in detector
+        uint64_t nb = np*sizeof(T); // total number of bytes allocated
     private:
-        gtd::mmapper mapper{s*sizeof(T)}; // gtd::mmapper object to take care of allocation using mmap
+        gtd::mmapper mapper{np*sizeof(T)}; // gtd::mmapper object to take care of allocation using mmap
     protected:
         T *data = (T*) mapper.get(); // pointer to data on host
 #ifdef __CUDACC__
@@ -54,9 +58,15 @@ namespace diff {
         bool on_gpu = false; // boolean indicating whether stored results are on the GPU
 #endif
         bool on_cpu = false; // boolean indicating whether stored results are on the CPU
+        uint64_t pix_offset(uint64_t x, uint64_t y) { // get offset into array based on x- and y-coordinates of pixel
+            return y*nw + x;
+        }
+        coord pix_coords(uint64_t offset) { // get x- and y-coordinates of pixel at given offset
+            return {offset % nw, offset/nw};
+        }
     public:
         diffalloc() = default;
-        diffalloc(uint64_t width, uint64_t height) : w{width}, h{height}, s{width*height} {
+        diffalloc(uint64_t width, uint64_t height) : nw{width}, nh{height}, np{width*height} {
 #ifdef __CUDACC__
             CUDA_ERROR(cudaMalloc(&gdat, nb));
             CUDA_ERROR(cudaMemset(gdat, 0, nb)); // zeros-out all allocated GPU memory
@@ -78,13 +88,13 @@ namespace diff {
         }
 #endif
         uint64_t dttr_width() const noexcept {
-            return this->w;
+            return this->nw;
         }
         uint64_t dttr_height() const noexcept {
-            return this->h;
+            return this->nh;
         }
         uint64_t dttr_pixels() const noexcept {
-            return this->s;
+            return this->np;
         }
         uint64_t dttr_bytes() const noexcept {
             return this->nb;
@@ -115,12 +125,12 @@ namespace diff {
                 goto end;
             }
             tot_written += 4;
-            if ((bwritten = gtd::write_all(fd, &this->w, sizeof(uint64_t))) != sizeof(uint64_t)) {
+            if ((bwritten = gtd::write_all(fd, &this->nw, sizeof(uint64_t))) != sizeof(uint64_t)) {
                 tot_written += bwritten;
                 goto end;
             }
             tot_written += sizeof(uint64_t);
-            if ((bwritten = gtd::write_all(fd, &this->h, sizeof(uint64_t))) != sizeof(uint64_t)) {
+            if ((bwritten = gtd::write_all(fd, &this->nh, sizeof(uint64_t))) != sizeof(uint64_t)) {
                 tot_written += bwritten;
                 goto end;
             }
@@ -166,16 +176,16 @@ namespace diff {
                 close(fd);
                 return tot_read;
             }
-            this->w = *((uint64_t*) (info + 4));
-            this->h = *((uint64_t*) (info + 12));
-            uint64_t old_s = this->s;
-            this->s = this->w*this->h;
-            this->nb = this->s*sizeof(T);
+            this->nw = *((uint64_t*) (info + 4));
+            this->nh = *((uint64_t*) (info + 12));
+            uint64_t old_np = this->np;
+            this->np = this->nw*this->nh;
+            this->nb = this->np*sizeof(T);
             if (buff.st_size != 28 + this->nb) {
                 close(fd);
                 return tot_read;
             }
-            if (this->s != old_s) {
+            if (this->np != old_np) {
                 // delete [] data;
                 // data = new T[this->s];
                 mapper.reset(this->nb);
