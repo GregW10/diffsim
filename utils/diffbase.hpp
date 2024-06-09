@@ -34,13 +34,13 @@ namespace diff {
     concept callable = requires (C a) {
         {a()};
     };
-    template <typename C, typename T>
+    template <typename C, typename T, typename R = T>
     concept callret = requires (C a, T t) {
-        {a(t)} -> std::same_as<T>;
+        {a(t)} -> std::same_as<R>;
     };
-    template <typename C, typename T>
+    template <typename C, typename T, typename R = T>
     concept calldblret = requires (C a, T t1, T t2) {
-        {a(t1, t2)} -> std::same_as<T>;
+        {a(t1, t2)} -> std::same_as<R>;
     };
     namespace misc {
         template <typename T = uint64_t> requires (std::is_integral<T>::value && std::is_unsigned<T>::value)
@@ -326,10 +326,15 @@ namespace diff {
         res *= dx/3;
         return res;
     }
-    template <gtd::numeric T, callret<T> F, bool prog = false>
+    template <gtd::numeric T, gtd::numeric R, callret<T, R> F, bool prog = false>
     // requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T simpquad(const F &f, T a, T b, T abstol = 0.0625l/1024.0l, T reltol = 0.0625l/1024.0l,
-        T ptol = 1/(1024.0l*1024.0l), uint64_t *mdepth = nullptr) {
+    HOST_DEVICE R simpquad(const F &f,
+                           T a,
+                           T b,
+                           T abstol = 0.0625l/1024.0l,
+                           T reltol = 0.0625l/1024.0l,
+                           T ptol = 1/(1024.0l*1024.0l),
+                           uint64_t *mdepth = nullptr) {
         if (b < a || abstol <= 0 || reltol < 0 || reltol >= 1)
             throw std::invalid_argument{"Error: upper x-bound must be above lower x-bound, x-tolerance must be "
                                         "positive and x-relative-tolerance must be in [0,1).\n"};
@@ -339,8 +344,8 @@ namespace diff {
             return 0;
         }
         struct fm3fb_val {
-            T fm3;
-            T fb;
+            R fm3;
+            R fb;
         } fm3fb;
         gtd::stack<fm3fb_val> stack;
         T global_range = b - a;
@@ -353,15 +358,15 @@ namespace diff {
         T m2 = (a + b)/2;
         T m1 = m2 - dxo4;
         T m3 = m2 + dxo4;
-        T fa = f(a);
-        T fm1 = f(m1);
-        T fm2 = f(m2);
-        T fm3 = f(m3);
-        T fb = f(b);
-        T faPfb;
-        T estimate;
-        T ires;
-        T res = 0;
+        R fa = f(a);
+        R fm1 = f(m1);
+        R fm2 = f(m2);
+        R fm3 = f(m3);
+        R fb = f(b);
+        R faPfb;
+        R estimate;
+        R ires;
+        R res = 0;
         bool left = false;
         uint64_t bitmask;
         T absval;
@@ -373,7 +378,7 @@ namespace diff {
             estimate = dxo6*(faPfb + 4*fm2); \
             ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3); \
             par2 \
-            if ((absval = std::abs(ires - estimate)) > abstol && absval > std::abs(reltol*ires)) { \
+            if ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(reltol*ires)) { \
                 lab1: \
                 dx = dxo2; \
                 dxo2 = dxo4; \
@@ -519,9 +524,9 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <gtd::numeric T, calldblret<T> F, callret<T> GH, bool prog = false>
+    template <gtd::numeric T, gtd::numeric R, calldblret<T, R> F, callret<T> GH, bool prog = false>
     // requires (std::is_floating_point<T>::value)
-    HOST_DEVICE T simpdblquad(const F &f,
+    HOST_DEVICE R simpdblquad(const F &f,
                               T ya,
                               T yb,
                               const GH &gfunc,
@@ -540,8 +545,8 @@ namespace diff {
         if (ya == yb) // zero width = zero area, so might as well save some computation below
             return 0;
         struct fym3fyb_val {
-            T fym3;
-            T fyb;
+            R fym3;
+            R fyb;
         } fym3fyb;
 #define XDEPTH if (maxx_depth > *mdepth_x) *mdepth_x = maxx_depth; maxx_depth = org_mxd;
 #define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
@@ -557,19 +562,19 @@ namespace diff {
         T ym1 = ym2 - dyo4;
         T ym3 = ym2 + dyo4;
         T y;
-        auto fy_lam = [&f, &y](T x){return f(x, y);};
-        T fyaPfyb;
-        T estimate;
-        T ires;
-        T res = 0;
+        auto fy_lam = [&f, &y](const T &x){return f(x, y);};
+        R fyaPfyb;
+        R estimate;
+        R ires;
+        R res = 0;
         bool left = false;
         uint64_t bitmask;
         T absval;
-        T fya;
-        T fym1;
-        T fym2;
-        T fym3;
-        T fyb;
+        R fya;
+        R fym1;
+        R fym2;
+        R fym3;
+        R fyb;
         uint64_t *mptr;
 #define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after) \
         y = ya; \
@@ -588,7 +593,7 @@ namespace diff {
             estimate = dyo6*(fyaPfyb + 4*fym2); \
             ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3); \
             par2 \
-            if ((absval = std::abs(ires - estimate)) > abstol_y && absval > reltol_y*ires) { \
+            if ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(reltol_y*ires)) { \
                 lab1: \
                 dy = dyo2; \
                 dyo2 = dyo4; \

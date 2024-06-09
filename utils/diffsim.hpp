@@ -6,6 +6,7 @@
 
 #ifndef __CUDACC__
 #include <thread>
+#include <atomic>
 #endif
 
 namespace diff {
@@ -40,25 +41,23 @@ namespace diff {
         T x0 = 0.5*(pw - xdttr);
         T y0 = 0.5*(pw - ydttr);
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
+        std::atomic<uint64_t> counter{};
         void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
             vec->x = x0 + i*pw;
             vec->y = y0 + j*pw;
         }
-        void diffract_subrange(uint64_t start_offset, // nope
-                               uint64_t stop_offset, // nope
-                               T abstol_y = 0.0625l/1024.0l,
-                               T reltol_y = 0.0625l/1024.0l,
-                               T ptol_y = 1/(1024.0l*1024.0l),
-                               uint64_t *mdepth_y = nullptr,
-                               T abstol_x = 0.0625l/1024.0l,
-                               T reltol_x = 0.0625l/1024.0l,
-                               T ptol_x = 1/(1024.0l*1024.0l),
-                               uint64_t *mdepth_x = nullptr) {
+        void diffract_thread(T abstol_y,
+                             T reltol_y,
+                             T ptol_y,
+                             uint64_t *mdepth_y,
+                             T abstol_x,
+                             T reltol_x,
+                             T ptol_x,
+                             uint64_t *mdepth_x) {
             coord c;
             vector<T> pos;
             pos.z = zdist; // is constant
-            uint64_t offset = start_offset;
-            T *dptr = diffalloc<T>::data + start_offset;
+            uint64_t offset = counter++;
             static const gtd::complex<T> _i{0, 1};
             gtd::complex<T> result;
             auto integrand = [&pos, this](const T &ap_x, const T &ap_y){
@@ -68,12 +67,15 @@ namespace diff {
                 T kr = this->k*std::sqrt(rsq);
                 return ((std::cos(kr) + _i*std::sin(kr))/(rsq))*(1 + _i/kr); // eliminate sine
             };
-            while (offset < stop_offset) {
-                c = diffalloc<T>::pix_coords(offset++); // I will find a more optimised way of doing this
+            while (offset < diffalloc<T>::np) {
+                c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 pix_to_pos(&pos, c.x, c.y);
-                *dptr++ = E0_to_intensity(diff::simpdblquad(integrand, ap.ya, ap.yb, ap.gfunc, ap.hfunc, abstol_y,
-                                                            reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x,
-                                                            mdepth_x)*((k*zdist*E0)/(_i*2*PI))); // get intensity
+                *(diffalloc<T>::data + offset) = E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>,
+                    decltype(integrand)>(integrand, ap.ya, ap.yb, ap.gfunc,
+                                         ap.hfunc, abstol_y,
+                                         reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x,
+                                         mdepth_x)*(((-_i)*k*zdist*E0)/(2*PI))); // get intensity
+                offset = counter++;
             }
         }
     public:
@@ -107,8 +109,17 @@ namespace diff {
                       T abstol_x = 0.0625l/1024.0l,
                       T reltol_x = 0.0625l/1024.0l,
                       T ptol_x = 1/(1024.0l*1024.0l),
-                      uint64_t *mdepth_x = nullptr) {
-
+                      uint64_t *mdepth_x = nullptr,
+                      unsigned int num_threads = 0) {
+            static const unsigned int numt = std::thread::hardware_concurrency();
+            std::vector<std::thread> threads;
+            unsigned int i = num_threads ? num_threads : numt;
+            while (i --> 0)
+                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y, abstol_x,
+                                     reltol_x, ptol_x, mdepth_x);
+            for (std::thread &t : threads)
+                t.join();
+            counter.store(0);
         }
     };
 }
