@@ -79,6 +79,7 @@ namespace diff {
             }
         }
     public:
+        static constexpr uint64_t def_mdepth = 48;
         diffsim() = delete;
         diffsim(const T &wavelength,
                 const aperture<T> &aperture,
@@ -104,19 +105,19 @@ namespace diff {
         }
         void diffract(T abstol_y = 0.0625l/1024.0l,
                       T reltol_y = 0.0625l/1024.0l,
-                      T ptol_y = 1/(1024.0l*1024.0l),
-                      uint64_t *mdepth_y = nullptr,
+                      T ptol_y = 1/(1024.0l*1024.0l*1024.0l),
+                      uint64_t mdepth_y = def_mdepth,
                       T abstol_x = 0.0625l/1024.0l,
                       T reltol_x = 0.0625l/1024.0l,
-                      T ptol_x = 1/(1024.0l*1024.0l),
-                      uint64_t *mdepth_x = nullptr,
+                      T ptol_x = 1/(1024.0l*1024.0l*1024.0l),
+                      uint64_t mdepth_x = def_mdepth,
                       unsigned int num_threads = 0) {
             static const unsigned int numt = std::thread::hardware_concurrency();
             std::vector<std::thread> threads;
             unsigned int i = num_threads ? num_threads : numt;
             while (i --> 0)
-                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y, abstol_x,
-                                     reltol_x, ptol_x, mdepth_x);
+                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, &mdepth_y,
+                                     abstol_x, reltol_x, ptol_x, &mdepth_x);
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);

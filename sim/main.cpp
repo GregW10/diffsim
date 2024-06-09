@@ -32,7 +32,7 @@ int main() {
     diff::aperture<long double> ap{YA, YB, &gfunc, &hfunc};
     diff::diffsim<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, DTTR_NX, DTTR_NY};
     sim.diffract();
-    gtd::complex c{1, 1};
+    gtd::complex<long double> c{1, 1};
     std::cout << gtd::abs(c) << std::endl;
     std::cout << c.mag() << std::endl;
     return 0;
