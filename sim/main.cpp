@@ -30,8 +30,9 @@ long double beam_intensity(const long double &laser_power, const long double &be
 int main() {
     long double I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
     diff::aperture<long double> ap{YA, YB, &gfunc, &hfunc};
-    diff::diffsim<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, DTTR_NX, DTTR_NY};
+    diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, DTTR_NX, DTTR_NY};
     sim.diffract();
+    sim.gen_bmp();
     gtd::complex<long double> c{1, 1};
     std::cout << gtd::abs(c) << std::endl;
     std::cout << c.mag() << std::endl;
