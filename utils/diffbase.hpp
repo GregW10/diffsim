@@ -314,7 +314,7 @@ namespace diff {
         res *= dx/3;
         return res;
     }
-    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F, bool prog = false>
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F, bool prog>
     // requires (std::is_floating_point<T>::value)
     HOST_DEVICE R simpquad(const F &f,
                            T a,
@@ -541,7 +541,7 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> GH, bool prog = false>
+    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> GH, bool prog>
     // requires (std::is_floating_point<T>::value)
     HOST_DEVICE R simpdblquad(const F &f,
                               T ya,
