@@ -48,6 +48,7 @@ namespace diff {
             vec->x = x0 + i*pw;
             vec->y = y0 + j*pw;
         }
+        std::mutex dumb;
         void diffract_thread(T abstol_y,
                              T reltol_y,
                              T ptol_y,
@@ -62,6 +63,7 @@ namespace diff {
             T zdsq = zdist*zdist;
             uint64_t offset = counter++;
             static const gtd::complex<T> _i{0, 1};
+            static const gtd::complex<T> _mi{0, -1};
             // gtd::complex<T> result;
             auto integrand = [&pos, this, &zdsq](const T &ap_x, const T &ap_y){
                 T xdiff = ap_x - pos.x;
@@ -73,16 +75,39 @@ namespace diff {
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 this->pix_to_pos(&pos, c.x, c.y);
+                dumb.lock();
+                std::cout << "offset: " << offset << ", c.x: " << c.x << ", c.y: " << c.y << ", pos.x: "
+                          << pos.x << ", pos.y: " << pos.y << ", pos.z: " << pos.z << std::endl;
+                dumb.unlock();
                 *(diffalloc<T>::data + offset) = E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>,
                     decltype(integrand)>(integrand, ap.ya, ap.yb, ap.gfunc,
                                          ap.hfunc, abstol_y,
                                          reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x,
-                                         mdepth_x)*(((-_i)*zdist*E0)/lambda)); // get intensity
+                                         mdepth_x)*((_mi*zdist*E0)/lambda)); // get intensity
                 offset = counter++;
             }
         }
+        void prog_thread(unsigned ptime) {
+            uint64_t offset = counter.load();
+            if (isatty(STDOUT_FILENO)) {
+                while (offset < diffalloc<T>::np) {
+                    printf("%.1Lf%% complete\r", ((long double) offset)/diffalloc<T>::np);
+                    fflush(stdout);
+                    sleep(ptime);
+                    offset = counter.load();
+                }
+            } else {
+                while (offset < diffalloc<T>::np) {
+                    printf("%.1Lf%% complete\n", ((long double) offset)/diffalloc<T>::np);
+                    fflush(stdout);
+                    sleep(ptime);
+                    offset = counter.load();
+                }
+            }
+            printf("100.0%% complete.\n");
+        }
     public:
-        static constexpr uint64_t def_mdepth = 16;
+        static constexpr uint64_t def_mdepth = 48;
         diffsim() = delete;
         diffsim(const T &wavelength,
                 const aperture<T> &aperture,
@@ -106,21 +131,26 @@ namespace diff {
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
-        void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l*1024.0l),
-                      T reltol_y = 0.0625l/(1024.0l*1024.0l*1024.0l),
-                      T ptol_y = 1/(1024.0l*1024.0l*1024.0l),
+        void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
+                      T reltol_y = 0.0625l/(1024.0l*1024.0l),
+                      T ptol_y = -1/(1024.0l*1024.0l*1024.0l),
                       uint64_t mdepth_y = def_mdepth,
-                      T abstol_x = 0.0625l/(1024.0l*1024.0l*1024.0l),
-                      T reltol_x = 0.0625l/(1024.0l*1024.0l*1024.0l),
-                      T ptol_x = 1/(1024.0l*1024.0l*1024.0l),
+                      T abstol_x = 0.0625l/(1024.0l*1024.0l),
+                      T reltol_x = 0.0625l/(1024.0l*1024.0l),
+                      T ptol_x = -1/(1024.0l*1024.0l*1024.0l),
                       uint64_t mdepth_x = def_mdepth,
-                      unsigned int num_threads = 0) {
+                      unsigned int num_threads = 0,
+                      unsigned ptime = 1) {
             static const unsigned int numt = std::thread::hardware_concurrency();
             std::vector<std::thread> threads;
             unsigned int i = num_threads ? num_threads : numt;
             while (i --> 0)
                 threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, &mdepth_y,
                                      abstol_x, reltol_x, ptol_x, &mdepth_x);
+            if (ptime) {
+                std::thread progt{&diffsim<T>::prog_thread, this, ptime};
+                progt.join();
+            }
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);
