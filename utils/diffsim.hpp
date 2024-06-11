@@ -41,6 +41,8 @@ namespace diff {
         T pw; // pixel width (and height, since pixels are squares)
         T x0 = 0.5*(pw - xdttr);
         T y0 = 0.5*(pw - ydttr);
+        T zdsq = zdist*zdist;
+        gtd::complex<T> outside_factor = (gtd::complex<T>::m_imunit*zdist*E0)/lambda;
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
     private:
         std::atomic<uint64_t> counter{};
@@ -48,61 +50,45 @@ namespace diff {
             vec->x = x0 + i*pw;
             vec->y = y0 + j*pw;
         }
-        std::mutex dumb;
         void diffract_thread(T abstol_y,
                              T reltol_y,
                              T ptol_y,
-                             uint64_t *mdepth_y,
+                             uint64_t mdepth_y,
                              T abstol_x,
                              T reltol_x,
                              T ptol_x,
-                             uint64_t *mdepth_x) {
+                             uint64_t mdepth_x) {
             coord c;
             vector<T> pos;
             pos.z = zdist; // is constant
-            T zdsq = zdist*zdist;
             uint64_t offset = counter++;
-            static const gtd::complex<T> _i{0, 1};
-            static const gtd::complex<T> _mi{0, -1};
-            // gtd::complex<T> result;
-            auto integrand = [&pos, this, &zdsq](const T &ap_x, const T &ap_y){
+            auto integrand = [&pos, this](const T &ap_x, const T &ap_y){
                 T xdiff = ap_x - pos.x;
                 T ydiff = ap_y - pos.y;
-                T rsq = xdiff*xdiff + ydiff*ydiff + zdsq;
+                T rsq = xdiff*xdiff + ydiff*ydiff + this->zdsq;
                 T kr = this->k*std::sqrt(rsq);
-                return ((std::cos(kr) + _i*std::sin(kr))/(rsq))*(1 + _i/kr); // eliminate sine
+                return ((std::cos(kr) + gtd::complex<T>::imunit*std::sin(kr))/
+                       (rsq))*(1 + gtd::complex<T>::imunit/kr); // eliminate sine
             };
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 this->pix_to_pos(&pos, c.x, c.y);
-                dumb.lock();
-                std::cout << "offset: " << offset << ", c.x: " << c.x << ", c.y: " << c.y << ", pos.x: "
-                          << pos.x << ", pos.y: " << pos.y << ", pos.z: " << pos.z << std::endl;
-                dumb.unlock();
                 *(diffalloc<T>::data + offset) = E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>,
                     decltype(integrand)>(integrand, ap.ya, ap.yb, ap.gfunc,
                                          ap.hfunc, abstol_y,
-                                         reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x,
-                                         mdepth_x)*((_mi*zdist*E0)/lambda)); // get intensity
+                                         reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                         &mdepth_x)*this->outside_factor); // get intensity
                 offset = counter++;
             }
         }
         void prog_thread(unsigned ptime) {
+            char _c = isatty(STDOUT_FILENO) ? '\r' : '\n';
             uint64_t offset = counter.load();
-            if (isatty(STDOUT_FILENO)) {
-                while (offset < diffalloc<T>::np) {
-                    printf("%.1Lf%% complete\r", ((long double) offset)/diffalloc<T>::np);
-                    fflush(stdout);
-                    sleep(ptime);
-                    offset = counter.load();
-                }
-            } else {
-                while (offset < diffalloc<T>::np) {
-                    printf("%.1Lf%% complete\n", ((long double) offset)/diffalloc<T>::np);
-                    fflush(stdout);
-                    sleep(ptime);
-                    offset = counter.load();
-                }
+            while (offset < diffalloc<T>::np) {
+                printf("%.1Lf%% complete%c", (((long double) offset)/diffalloc<T>::np)*100.0l, _c);
+                fflush(stdout);
+                sleep(ptime);
+                offset = counter.load();
             }
             printf("100.0%% complete.\n");
         }
@@ -145,8 +131,8 @@ namespace diff {
             std::vector<std::thread> threads;
             unsigned int i = num_threads ? num_threads : numt;
             while (i --> 0)
-                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, &mdepth_y,
-                                     abstol_x, reltol_x, ptol_x, &mdepth_x);
+                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
+                                     abstol_x, reltol_x, ptol_x, mdepth_x);
             if (ptime) {
                 std::thread progt{&diffsim<T>::prog_thread, this, ptime};
                 progt.join();

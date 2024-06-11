@@ -39,7 +39,16 @@ int main(int argc, char **argv) {
     long double I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
     diff::aperture<long double> ap{YA, YB, &gfunc, &hfunc};
     diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
-    sim.diffract();
+    sim.diffract(0.0625l/(1024.0l*1024.0l),
+                 0.0625l/(1024.0l*1024.0l),
+                 -1/(1024.0l*1024.0l*1024.0l),
+                 diff::diffsim<double>::def_mdepth,
+                 0.0625l/(1024.0l*1024.0l),
+                 0.0625l/(1024.0l*1024.0l),
+                 -1/(1024.0l*1024.0l*1024.0l),
+                 diff::diffsim<double>::def_mdepth,
+                 0,
+                 1);
     sim.gen_bmp();
     gtd::complex<long double> c{1, 1};
     // std::cout << gtd::abs(c) << std::endl;

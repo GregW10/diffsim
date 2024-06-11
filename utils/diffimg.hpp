@@ -24,11 +24,13 @@ namespace diff {
     template <typename T = long double> requires (std::is_floating_point_v<T>)
     class colours {
     public:
-        constexpr static colour<T> white = {1.0l, 1.0l, 1.0l};
-        constexpr static colour<T> black = {0.0l, 0.0l, 0.0l};
-        constexpr static colour<T> blue  = {0.0l, 0.0l, 1.0l};
-        constexpr static colour<T> green = {0.0l, 1.0l, 0.0l};
-        constexpr static colour<T> red   = {1.0l, 0.0l, 0.0l};
+        constexpr static colour<T> white   = {1.0l, 1.0l, 1.0l};
+        constexpr static colour<T> black   = {0.0l, 0.0l, 0.0l};
+        constexpr static colour<T> blue    = {0.0l, 0.0l, 1.0l};
+        constexpr static colour<T> green   = {0.0l, 1.0l, 0.0l};
+        constexpr static colour<T> red     = {1.0l, 0.0l, 0.0l};
+        constexpr static colour<T> magenta = {1.0l, 0.0l, 1.0l};
+        constexpr static colour<T> cyan    = {0.0l, 1.0l, 1.0l};
     };
     template <typename T> requires (std::is_floating_point_v<T>)
     class colourmap {
@@ -150,7 +152,7 @@ namespace diff {
     public:
         using diffsim<T>::diffsim;
         template <gtd::numeric C = T>
-        off_t gen_bmp(const colourmap<C> &cmap = cmaps<T>::grayscale, const char *path = nullptr) {
+        off_t gen_bmp(const colourmap<C> &cmap = cmaps<T>::bgr, const char *path = nullptr) {
             uint64_t i = 0;
             uint64_t j;
             T *dptr = diffalloc<T>::data;
