@@ -8,8 +8,8 @@
 #define DTTR_X    0.00002l
 #define DTTR_Y    0.00002l
 #define DTTR_DIST 0.00001l
-#define DTTR_NX 10
-#define DTTR_NY 10
+#define DTTR_NX   10
+#define DTTR_NY   10
 
 #define LASER_POWER 0.005l // 5 mW laser
 #define BEAM_DIAMETER 0.001l // 1 mm beam diameter
@@ -41,11 +41,11 @@ int main(int argc, char **argv) {
     diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
     sim.diffract(0.0625l/(1024.0l*1024.0l),
                  0.0625l/(1024.0l*1024.0l),
-                 -1/(1024.0l*1024.0l*1024.0l),
+                 1/(1024.0l*1024.0l*1024.0l),
                  diff::diffsim<double>::def_mdepth,
                  0.0625l/(1024.0l*1024.0l),
                  0.0625l/(1024.0l*1024.0l),
-                 -1/(1024.0l*1024.0l*1024.0l),
+                 1/(1024.0l*1024.0l*1024.0l),
                  diff::diffsim<double>::def_mdepth,
                  0,
                  1);

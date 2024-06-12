@@ -85,15 +85,15 @@ namespace diff {
             char _c = isatty(STDOUT_FILENO) ? '\r' : '\n';
             uint64_t offset = counter.load();
             while (offset < diffalloc<T>::np) {
-                printf("%.1Lf%% complete%c", (((long double) offset)/diffalloc<T>::np)*100.0l, _c);
+                printf("%.2Lf%% complete%c", (((long double) offset)/diffalloc<T>::np)*100.0l, _c);
                 fflush(stdout);
                 sleep(ptime);
                 offset = counter.load();
             }
-            printf("100.0%% complete.\n");
+            printf("100.00%% complete.\n");
         }
     public:
-        static constexpr uint64_t def_mdepth = 48;
+        static constexpr uint64_t def_mdepth = 52;
         diffsim() = delete;
         diffsim(const T &wavelength,
                 const aperture<T> &aperture,
@@ -119,18 +119,19 @@ namespace diff {
         }
         void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
                       T reltol_y = 0.0625l/(1024.0l*1024.0l),
-                      T ptol_y = -1/(1024.0l*1024.0l*1024.0l),
+                      T ptol_y = 1/(1024.0l*1024.0l*1024.0l),
                       uint64_t mdepth_y = def_mdepth,
                       T abstol_x = 0.0625l/(1024.0l*1024.0l),
                       T reltol_x = 0.0625l/(1024.0l*1024.0l),
-                      T ptol_x = -1/(1024.0l*1024.0l*1024.0l),
+                      T ptol_x = 1/(1024.0l*1024.0l*1024.0l),
                       uint64_t mdepth_x = def_mdepth,
                       unsigned int num_threads = 0,
                       unsigned ptime = 1) {
             static const unsigned int numt = std::thread::hardware_concurrency();
             std::vector<std::thread> threads;
-            unsigned int i = num_threads ? num_threads : numt;
-            while (i --> 0)
+            unsigned int _i = num_threads ? num_threads : numt;
+            threads.reserve(_i);
+            while (_i --> 0)
                 threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
                                      abstol_x, reltol_x, ptol_x, mdepth_x);
             if (ptime) {
@@ -140,6 +141,30 @@ namespace diff {
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);
+        }
+        off_t to_dffr(const char *path) {
+            if (!path || !*path)
+                throw std::invalid_argument{"Error: path cannot be nullptr or empty.\n"};
+            int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+            if (fd == -1)
+                throw std::ios_base::failure{"Error: could not open .dffr file.\n"};
+            char hdr[] = {'D', 'F', 'F', 'R'};
+            if (gtd::write_all(fd, hdr, sizeof(hdr)) != sizeof(hdr))
+                throw std::ios_base::failure{"Error: could not write .dffr file header.\n"};
+            constexpr static uint64_t sizeT = sizeof(T);
+            if (gtd::write_all(fd, &sizeT, sizeof(uint64_t)) != sizeof(uint64_t))
+                throw std::ios_base::failure{"Error: could not write .dffr file header.\n"};
+            /* To be continued...
+             * I am going to handle the variable x-bounds in two different ways:
+             *     1. I will replace my trivial "aperture" struct with a "shape" class that can generate (x,y) points
+             *     that delineate the aperture.
+             *     2. I will create some derived classes that represent common aperture shapes, such as "square",
+             *     "rectangle", "circle", "ellipse" and "triangle". These will be constructed and contain "gfunc" and
+             *     "hfunc". Each of these classes will have a unique ID.
+             * Once I have done the above, I will be able to save the aperture to the .dffr file either as a list of
+             * points, or by storing the ID of the aperture shape and the appropriate parameters. */
+            if (close(fd) == -1)
+                throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
         }
     };
 }

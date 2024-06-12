@@ -55,9 +55,9 @@ namespace diff {
         T *data = (T*) mapper.get(); // pointer to data on host
 #ifdef __CUDACC__
         T *gdat{}; // pointer to data on device
-        bool on_gpu = false; // boolean indicating whether stored results are on the GPU
+        // bool on_gpu = false; // boolean indicating whether stored results are on the GPU
 #endif
-        bool on_cpu = false; // boolean indicating whether stored results are on the CPU
+        // bool on_cpu = false; // boolean indicating whether stored results are on the CPU
         uint64_t pix_offset(uint64_t x, uint64_t y) { // get offset into array based on x- and y-coordinates of pixel
             return y*nw + x;
         }
@@ -77,7 +77,7 @@ namespace diff {
             this->from_dttr(dttr_path);
         }
 #ifdef __CUDACC__
-        bool dev_to_host() {
+        /* bool dev_to_host() {
             if (!on_gpu)
                 return false; // no results on GPU, so nothing to copy
             if (on_cpu)
@@ -85,21 +85,21 @@ namespace diff {
             CUDA_ERROR(cudaMemcpy(data, gdat, nb, cudaMemcpyDeviceToHost));
             on_cpu = true; // now results are on both the CPU and GPU
             return true;
-        }
+        } */
 #endif
-        uint64_t dttr_width() const noexcept {
+        uint64_t dpwidth() const noexcept {
             return this->nw;
         }
-        uint64_t dttr_height() const noexcept {
+        uint64_t dpheight() const noexcept {
             return this->nh;
         }
-        uint64_t dttr_pixels() const noexcept {
+        uint64_t dpixels() const noexcept {
             return this->np;
         }
-        uint64_t dttr_bytes() const noexcept {
+        uint64_t dnbytes() const noexcept {
             return this->nb;
         }
-        uint64_t dttr_size() const noexcept {
+        uint64_t dttr_fsize() const noexcept {
             return 28 + this->nb;
         }
         uint64_t to_dttr(const char *path) {
@@ -108,7 +108,7 @@ namespace diff {
 #ifdef __CUDACC__
             // if (!dev_to_host()) // takes care of copying results to CPU if on GPU, and if not, returns false
                 // return 0;
-            dev_to_host(); // copy results to CPU if on GPU
+            // dev_to_host(); // copy results to CPU if on GPU
 #else
             // if (on_cpu)
                 // return 0; // because results have not yet been calculated
@@ -196,9 +196,9 @@ namespace diff {
                 return tot_read + bread;
             }
             close(fd);
-            on_cpu = true;
+            // on_cpu = true;
 #ifdef __CUDACC__
-            on_gpu = false;
+            // on_gpu = false;
 #endif
             return tot_read;
         }
