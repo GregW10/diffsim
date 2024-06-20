@@ -11,7 +11,7 @@ public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
         ++times_called;
         DBL val = x;
-        return std::sin(1/x);
+        return std::sin(x);
     }
     uint64_t reset() const noexcept {
         uint64_t val = times_called;
@@ -38,8 +38,8 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 #endif
 
 int main(int argc, char **argv) {
-    DBL a = 0.001;
-    DBL b = 4*PI;
+    DBL a = 0.000;
+    DBL b = 16*PI;
     uint64_t num = 10'000'000;
     uint64_t mdepth = 32;
     // char *endptr;
@@ -49,9 +49,9 @@ int main(int argc, char **argv) {
     // if (endptr == *(argv + 1))
     //     return 1;
     Functor functor;
-    DBL abstol = (1/65536.0l)/65536.0l;
+    DBL abstol = (1/65536.0l)/16384.0l;///65536.0l;
     DBL reltol = 0.000000000001l;
-    DBL ptol = -0.00000000001;///16.0;
+    DBL ptol = 1/(1024.0l*1024.0l*1024.0l);///16.0;
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);
@@ -72,13 +72,13 @@ int main(int argc, char **argv) {
     // functor.reset();
     /*std::ofstream out{"intervals.bin", std::ios_base::out | std::ios_base::binary | std::ios_base::trunc};*/
     start = std::chrono::high_resolution_clock::now();
-    DBL trapnr = diff::trapquad(functor, a, b, abstol, ptol, &mdepth/*, &out*/);
+    DBL trapnr = 5;//diff::trapquad(functor, a, b, abstol, ptol, &mdepth/*, &out*/);
     end = std::chrono::high_resolution_clock::now();
     /*out.close();*/
     uint64_t fc_trapi = functor.reset();
     std::chrono::duration nr_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     start = std::chrono::high_resolution_clock::now();
-    DBL simpr = diff::simpquad(functor, a, b, abstol, reltol, ptol, &mdepth_s/*, &out*/);
+    DBL simpr = diff::simpquad<DBL, DBL, decltype(functor), true>(functor, a, b, abstol, reltol, ptol, &mdepth_s/*, &out*/);
     end = std::chrono::high_resolution_clock::now();
     /*out.close();*/
     uint64_t fc_simpr = functor.reset();

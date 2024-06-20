@@ -315,7 +315,6 @@ namespace diff {
         return res;
     }
     template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F, bool prog>
-    // requires (std::is_floating_point<T>::value)
     HOST_DEVICE R simpquad(const F &f,
                            T a,
                            T b,
@@ -406,7 +405,7 @@ namespace diff {
                 fm1 = f(m1); \
                 fm3 = f(m3); \
                 left = true; \
-                if ((stack.size()) > tree.size()*64) { \
+                if (stack._size > tree.size()*64) { \
                     tree.push(); \
                 } \
             } \
@@ -457,7 +456,7 @@ namespace diff {
                         dxo12 = dxo6; \
                         dxo6 *= 2; \
                         abstol *= 2; \
-                        par00 \
+                        /* par00 */ \
                         bitmask = (1ull << ((stack.size() - 1) % 64)); \
                         if (bitmask == 9'223'372'036'854'775'808u) \
                             tree.pop(); \
@@ -475,50 +474,51 @@ namespace diff {
                     fb = fm3fb.fb; \
                     left = false; \
                     tree.top() |= bitmask; \
+                    par00 \
                 } \
             } \
         }
         if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+            const T org_ptol = ptol;
             if (mdepth) {
-                uint64_t _s;
+                // uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                    SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;, EMPTY, BT
-                                  CROSS(1),
-                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_1, other_1)
+                    SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/(1 << 2*stack._size);, EMPTY, BT CROSS(1),
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_1, other_1)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
-                    SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
-                                  if ((_s = stack.size()) == max_depth)
+                    SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/(1 << 2*stack._size);,
+                                  if (stack._size == max_depth)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_2;}, BT
                                   CROSS(2),
-                                  if (_s > *mdepth) {*mdepth = _s;}, divide_2, other_2)
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_2, other_2)
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};
-                SIMPQUAD_LOOP(ptol /= 2;, ptol *= 2;,
+                SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/(1 << 2*stack._size);,
                               EMPTY, BT CROSS(3),
                               EMPTY, divide_3, other_3)
             }
         } else {
             if (mdepth) {
-                uint64_t _s;
+                // uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8};
                     SIMPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
-                                  if ((_s = stack.size()) > *mdepth) {*mdepth = _s;}, divide_4, other_4)
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_4, other_4)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                     SIMPQUAD_LOOP(EMPTY, EMPTY,
-                                  if ((_s = stack.size()) == max_depth)
+                                  if (stack._size == max_depth)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_5;},
-                                  EMPTY, if (_s > *mdepth) {*mdepth = _s;}, divide_5, other_5)
+                                  EMPTY, if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_5, other_5)
                 }
             } else {
                 gtd::stack<uint64_t> tree{8};
@@ -542,7 +542,6 @@ namespace diff {
         return res; // for completeness, but would never be reached
     }
     template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> GH, bool prog>
-    // requires (std::is_floating_point<T>::value)
     HOST_DEVICE R simpdblquad(const F &f,
                               T ya,
                               T yb,
