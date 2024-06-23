@@ -11,7 +11,7 @@ public:
     HOST_DEVICE DBL operator()(DBL x) const noexcept {
         ++times_called;
         DBL val = x;
-        return std::sin(x);
+        return std::log(x);
     }
     uint64_t reset() const noexcept {
         uint64_t val = times_called;
@@ -38,7 +38,7 @@ __global__ void kernel2(const F &f, double a, double b, double tol) {
 #endif
 
 int main(int argc, char **argv) {
-    DBL a = 0.000;
+    DBL a = 0.0001;
     DBL b = 16*PI;
     uint64_t num = 10'000'000;
     uint64_t mdepth = 32;
@@ -49,9 +49,9 @@ int main(int argc, char **argv) {
     // if (endptr == *(argv + 1))
     //     return 1;
     Functor functor;
-    DBL abstol = (1/65536.0l)/16384.0l;///65536.0l;
-    DBL reltol = 0.000000000001l;
-    DBL ptol = 1/(1024.0l*1024.0l*1024.0l);///16.0;
+    DBL abstol = (1/65536.0l);///16384.0l;///65536.0l;
+    DBL reltol = 0.0000001l;
+    DBL ptol = 256/1024.0l;///(0.0625l);///16.0;
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);

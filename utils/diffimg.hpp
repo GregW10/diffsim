@@ -198,12 +198,12 @@ namespace diff {
             this->clrs = std::move(other.clrs);
             return *this;
         }
-        template <typename U>
-        friend std::ostream &operator<<(std::ostream &os, const colourmap<U> &_cmap) {
+        // template <typename U>
+        friend std::ostream &operator<<(std::ostream &os, const colourmap<T> &_cmap) {
             uint64_t _num = _cmap.clrs.size();
             if (!_num) // impossible, but anyway...
                 return os << "[]";
-            typename std::map<U, colour<U>>::const_iterator it = _cmap.clrs.cbegin();
+            typename std::map<T, colour<T>>::const_iterator it = _cmap.clrs.cbegin();
             os << "[\n";
             goto start;
             while (--_num > 0) {

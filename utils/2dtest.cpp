@@ -53,11 +53,11 @@ int main(int argc, char **argv) {
     DBL ptol_y = 0.00000000000000000001;
     DBL abstol_x = 0.0625l/10240000000000000.0l;
     DBL reltol_x = 0.0625l/10240000000000000.0l;
-    DBL ptol_x = 0.0000000000000000000000001;
+    DBL ptol_x = 0.000000000000000000000000001;
     std::chrono::time_point<std::chrono::high_resolution_clock> start =
             std::chrono::high_resolution_clock::now();
-    DBL res = diff::simpdblquad<DBL, Functor2D, decltype(gfunc), true>(f, ya, yb, gfunc, hfunc, abstol_y, reltol_y, ptol_y, &mdepth_y,
-                                abstol_x, reltol_x, ptol_x, &mdepth_x);
+    DBL res = diff::simpdblquad<DBL, DBL, Functor2D, decltype(gfunc), true>
+            (f, ya, yb, gfunc, hfunc, abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x, &mdepth_x);
     std::chrono::time_point<std::chrono::high_resolution_clock> end =
             std::chrono::high_resolution_clock::now();
     std::chrono::duration tot = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
