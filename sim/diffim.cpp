@@ -1,16 +1,25 @@
 #include "../utils/diffimg.hpp"
 #include "../glib/misc/gregparse.hpp"
 
-#define DEF_NX 500
-#define DEF_NY 500
-#define DEF_LAM 0.000000450l // blue-ish purple light
-#define DEF_XA -0.000001l
-#define DEF_XB 0.000001l
-#define DEF_YA -0.000001l
-#define DEF_YB 0.000001l
-#define DEF_Z 0.000001l
-#define DEF_W 0.000002l
-#define DEF_L 0.000002l
+#define DEF_NX   500
+#define DEF_NY   500
+#define DEF_LAM  0.000001l // blue-ish purple light
+#define DEF_XA  -0.000005l
+#define DEF_XB   0.000005l
+#define DEF_YA  -0.000005l
+#define DEF_YB   0.000005l
+#define DEF_Z    0.00001l
+#define DEF_W    0.00002l
+#define DEF_L    0.00002l
+#define DEF_I0   7'000 // like a 5 mW laser pointer
+#define DEF_ATY  0.0625l/(1024.0l*1024.0l)
+#define DEF_RTY  0.0625l/(1024.0l*1024.0l)
+#define DEF_PTY  1/(1024.0l*1024.0l*1024.0l)
+#define DEF_MDY  (uint64_t) 52
+#define DEF_ATX  0.0625l/(1024.0l*1024.0l)
+#define DEF_RTX  0.0625l/(1024.0l*1024.0l)
+#define DEF_PTX  1/(1024.0l*1024.0l*1024.0l)
+#define DEF_MDX  (uint64_t) 52
 
 typedef union float_val {
     float f;
@@ -30,8 +39,19 @@ struct sim_vals {
     T z; // distance to detector
     T w; // width of detector (along x-axis)
     T l; // length of detector (along y-axis)
+    T I0; // intensity of incident light on aperture (W/m^2)
+    T abstol_y;
+    T reltol_y;
+    T ptol_y;
+    T mdepth_y;
+    T abstol_x;
+    T reltol_x;
+    T ptol_x;
+    T mdepth_x;
+    uint64_t threads;
+    uint64_t ptime;
+    const char *bmp_path;
 };
-
 
 template <typename T> requires (std::is_floating_point_v<T>)
 int start_sim(gtd::parser &parser) {
@@ -78,6 +98,41 @@ int start_sim(gtd::parser &parser) {
         fprintf(stderr, "Error: length of detector (along y-axis) must be positive.\n");
         return 1;
     }
+    vals.I0 = parser.get_arg("--I0", (T) DEF_I0);
+    if (vals.I0 <= 0) {
+        fprintf(stderr, "Error: intensity of incident light must be positive.\n");
+        return 1;
+    }
+    vals.abstol_y = parser.get_arg("--abstol_y", (T) DEF_ATY);
+    if (vals.abstol_y <= 0) {
+        fprintf(stderr, "Error: absolute y-tolerance must be positive.\n");
+        return 1;
+    }
+    vals.reltol_y = parser.get_arg("--reltol_y", (T) DEF_RTY);
+    if (vals.reltol_y <= 0) {
+        fprintf(stderr, "Error: relative y-tolerance must be positive.\n");
+        return 1;
+    }
+    /* vals.ptol_y   = parser.get_arg("--ptol_y", (T) DEF_PTY);
+    if (vals.ptol_y <= 0) {
+        fprintf(stderr, "Error: periodic y-tolerance must be positive.\n");
+        return 1;
+    } */
+    vals.abstol_x = parser.get_arg("--abstol_x", (T) DEF_ATX);
+    if (vals.abstol_x <= 0) {
+        fprintf(stderr, "Error: absolute x-tolerance must be positive.\n");
+        return 1;
+    }
+    vals.reltol_x = parser.get_arg("--reltol_x", (T) DEF_RTX);
+    if (vals.reltol_x <= 0) {
+        fprintf(stderr, "Error: relative x-tolerance must be positive.\n");
+        return 1;
+    }
+    /* vals.ptol_x   = parser.get_arg("--ptol_x", (T) 1/(1024.0l*1024.0l*1024.0l));
+    if (vals.ptol_x <= 0) {
+        fprintf(stderr, "Error: periodic x-tolerance must be positive.\n");
+        return 1;
+    } */
     diff::colourmap<T> cmap; // grayscale by default
     const char *cmap_str = parser.get_arg("--cmap");
     if (cmap_str) {
@@ -86,13 +141,44 @@ int start_sim(gtd::parser &parser) {
         else
             cmap.from_cmap(cmap_str);
     }
-    std::cout << cmap << std::endl;
+    // std::cout << cmap << std::endl;
+    // bool prog = parser.get_arg("-p", true);
+    vals.ptol_y   = parser.get_arg("--ptol_y", (T) DEF_PTY);
+    vals.ptol_x   = parser.get_arg("--ptol_x", (T) DEF_PTX);
+    vals.mdepth_y = parser.get_arg("--mdepth_y", DEF_MDY);
+    vals.mdepth_x = parser.get_arg("--mdepth_x", DEF_MDX);
+    vals.threads = parser.get_arg("--threads", (uint64_t) 0);
+    vals.ptime = parser.get_arg("--ptime", (uint64_t) 1);
+    vals.bmp_path = parser.get_arg("-o");
+    std::cout << vals.ptol_y << ", " << vals.ptol_x << std::endl;
     if (!parser.empty()) {
         fprintf(stderr, "Error: unrecognised arguments have been passed:\n");
         for (const std::pair<int, std::string> &arg : parser)
             fprintf(stderr, "\t\"%s\"\n", arg.second.c_str());
         return 1;
     }
+    auto gfunc = [&vals](const T&){
+        return vals.xa;
+    };
+    auto hfunc = [&vals](const T&){
+        return vals.xb;
+    };
+    using G = decltype(gfunc);
+    using H = decltype(hfunc);
+    diff::aperture<T, G, H> ap{vals.ya, vals.yb, gfunc, hfunc};
+    diff::diffimg<T, G, H> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
+    sim.diffract(vals.abstol_y,
+                 vals.reltol_y,
+                 vals.ptol_y,
+                 vals.mdepth_y,
+                 vals.abstol_x,
+                 vals.reltol_x,
+                 vals.ptol_x,
+                 vals.mdepth_x,
+                 vals.threads,
+                 vals.ptime);
+    printf("Terminado!\n");
+    sim.gen_bmp(cmap, vals.bmp_path);
     return 0;
 }
 

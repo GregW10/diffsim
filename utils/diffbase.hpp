@@ -542,12 +542,12 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> GH, bool prog>
+    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> G, gtd::callret<T> H, bool prog>
     HOST_DEVICE R simpdblquad(const F &f,
                               T ya,
                               T yb,
-                              const GH &gfunc,
-                              const GH &hfunc,
+                              const G &gfunc,
+                              const H &hfunc,
                               T abstol_y,
                               T reltol_y,
                               T ptol_y,

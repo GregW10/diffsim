@@ -37,7 +37,8 @@ int main(int argc, char **argv) {
         return 1;
     std::cout << "DTTR_NX: " << dttr_nx << ", DTTR_NY: " << dttr_ny << std::endl;
     long double I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
-    diff::aperture<long double> ap{YA, YB, &gfunc, &hfunc};
+    printf("Incident light intensity: %.30Lf\n", I0);
+    diff::aperture<long double, decltype(&gfunc), decltype(&hfunc)> ap{YA, YB, &gfunc, &hfunc};
     diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
     sim.diffract(0.0625l/(1024.0l*1024.0l),
                  0.0625l/(1024.0l*1024.0l),

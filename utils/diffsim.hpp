@@ -17,22 +17,26 @@ namespace diff {
     };
     template <gtd::numeric T>
     using xbfunc = T (*)(const T&);
-    template <gtd::numeric T>
+    template <gtd::numeric T, gtd::callret<T> G, gtd::callret<T> H>
     struct aperture {
         T ya;
         T yb;
-        xbfunc<T> gfunc;
-        xbfunc<T> hfunc;
+        G gfunc;
+        H hfunc;
     };
     template <gtd::numeric T>
     struct vector {
         T x, y, z;
     };
-    template <gtd::numeric T>
+#ifndef __CUDACC__
+    template <gtd::numeric T = long double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+#else
+    template <gtd::numeric T = double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+#endif
     class diffsim : public diffalloc<T> {
     protected:
         T lambda; // wavelength of light (m)
-        aperture<T> ap; // aperture (slit)
+        aperture<T, G, H> ap; // aperture (slit)
         T zdist; // distance along z-axis to detector (m)
         T xdttr; // width of detector (along x) (m)
         T ydttr; // length of detector (along y) (m)
@@ -96,7 +100,7 @@ namespace diff {
         static constexpr uint64_t def_mdepth = 52;
         diffsim() = delete;
         diffsim(const T &wavelength,
-                const aperture<T> &aperture,
+                const aperture<T, G, H> &aperture,
                 const T &dttr_dist,
                 const T &dttr_width,
                 const T &dttr_length,
@@ -109,11 +113,11 @@ namespace diff {
         zdist{dttr_dist},
         xdttr{dttr_width},
         ydttr{dttr_length},
-        k{2*PI/wavelength},
-        pw{((long double) dttr_width)/dttr_width_px},
+        k{(T) (2*PI/wavelength)},
+        pw{((T) dttr_width)/dttr_width_px},
         E0{intensity_to_E0(incident_light_intensity)}
         {
-            if (wavelength <= 0 || aperture.ya >= aperture.yb || !aperture.gfunc || !aperture.hfunc || dttr_dist < 0 ||
+            if (wavelength <= 0 || aperture.ya >= aperture.yb/*||!aperture.gfunc||!aperture.hfunc*/|| dttr_dist < 0 ||
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
@@ -132,10 +136,10 @@ namespace diff {
             unsigned int _i = num_threads ? num_threads : numt;
             threads.reserve(_i);
             while (_i --> 0)
-                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
+                threads.emplace_back(&diffsim<T, G, H>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
                                      abstol_x, reltol_x, ptol_x, mdepth_x);
             if (ptime) {
-                std::thread progt{&diffsim<T>::prog_thread, this, ptime};
+                std::thread progt{&diffsim<T, G, H>::prog_thread, this, ptime};
                 progt.join();
             }
             for (std::thread &t : threads)

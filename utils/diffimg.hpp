@@ -221,7 +221,7 @@ namespace diff {
         static inline const colourmap<T> bgr = {{0.0l, colours<T>::blue},
                                                 {0.5l, colours<T>::green},
                                                 {1.0l, colours<T>::red}};
-        static inline const std::map<const char*, colourmap<T>> all_cmaps = {
+        static inline const std::map<std::string, colourmap<T>> all_cmaps = {
                 {"grayscale", grayscale},
                 {"bgr", bgr}
         };
@@ -240,8 +240,12 @@ namespace diff {
         uint32_t res2[6]{};
     };
 #pragma pack(pop)
-    template <gtd::numeric T>
-    class diffimg : public diffsim<T> {
+#ifndef __CUDACC__
+    template <gtd::numeric T = long double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+#else
+    template <gtd::numeric T = double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+#endif
+    class diffimg : public diffsim<T, G, H> {
         // gtd::bmp bmp{diffalloc<T>::nw, diffalloc<T>::nh};
         // gtd::mmapper bmp{diffalloc<T>::nb};
         std::pair<T, T> minmax_vals() const noexcept {
@@ -265,17 +269,17 @@ namespace diff {
         void add_bmp_metadata(int fd) {
             constexpr static uint64_t sizeT = sizeof(T);
             if (gtd::write_all(fd, &sizeT, sizeof(uint64_t)) != sizeof(uint64_t) ||
-                gtd::write_all(fd, &(diffsim<T>::lambda), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::ap.ya), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::ap.yb), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::zdist), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::xdttr), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::ydttr), sizeof(T)) != sizeof(T) ||
-                gtd::write_all(fd, &(diffsim<T>::E0), sizeof(T)) != sizeof(T))
+                gtd::write_all(fd, &(diffsim<T, G, H>::lambda), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::ap.ya), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::ap.yb), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::zdist), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::xdttr), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::ydttr), sizeof(T)) != sizeof(T) ||
+                gtd::write_all(fd, &(diffsim<T, G, H>::E0), sizeof(T)) != sizeof(T))
                 throw std::ios_base::failure{"Error: could not write .bmp metadata.\n"};
         }
     public:
-        using diffsim<T>::diffsim;
+        using diffsim<T, G, H>::diffsim;
         template <gtd::numeric C = T>
         off_t gen_bmp(const colourmap<C> &cmap = cmaps<T>::bgr, const char *path = nullptr) {
             uint64_t i = 0;
@@ -332,10 +336,11 @@ namespace diff {
                 fpath = new char[lim + 1];
                 snprintf(fpath, lim + 1, "difpat_lam"); */
                 oss = new std::ostringstream{};
-                *oss << "diffpat_lam" << diffsim<T>::lambda << "m_ya"
-                     << diffsim<T>::ap.ya << "m_yb" << diffsim<T>::ap.yb << "m_zd" << diffsim<T>::zdist
-                     << "_xdl" << diffsim<T>::xdttr << "m_ydl" << diffsim<T>::ydttr << "m_E0"
-                     << diffsim<T>::E0 << "Vpm.bmp";
+                *oss << "diffpat_lam" << diffsim<T, G, H>::lambda << "m_ya"
+                     << diffsim<T, G, H>::ap.ya << "m_yb" << diffsim<T, G, H>::ap.yb << "m_zd"
+                     << diffsim<T, G, H>::zdist
+                     << "_xdl" << diffsim<T, G, H>::xdttr << "m_ydl" << diffsim<T, G, H>::ydttr << "m_E0"
+                     << diffsim<T, G, H>::E0 << "Vpm.bmp";
                 path = oss->rdbuf()->view().data();
             }
             /* if (path)
