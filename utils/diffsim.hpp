@@ -3,6 +3,7 @@
 
 #include "diffalloc.hpp"
 #include "../glib/misc/gregcomplex.hpp"
+#include <cfloat>
 
 #ifndef __CUDACC__
 #include <thread>
@@ -46,7 +47,7 @@ namespace diff {
         T x0 = 0.5*(pw - xdttr);
         T y0 = 0.5*(pw - ydttr);
         T zdsq = zdist*zdist;
-        gtd::complex<T> outside_factor = (gtd::complex<T>::m_imunit*zdist*E0)/lambda;
+        const gtd::complex<T> outside_factor = (gtd::complex<T>::m_imunit*zdist*E0)/lambda;
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
     private:
         std::atomic<uint64_t> counter{};
@@ -131,6 +132,7 @@ namespace diff {
                       uint64_t mdepth_x = def_mdepth,
                       unsigned int num_threads = 0,
                       unsigned ptime = 1) {
+            // be able to return max_depth overall
             static const unsigned int numt = std::thread::hardware_concurrency();
             std::vector<std::thread> threads;
             unsigned int _i = num_threads ? num_threads : numt;
@@ -139,14 +141,16 @@ namespace diff {
                 threads.emplace_back(&diffsim<T, G, H>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
                                      abstol_x, reltol_x, ptol_x, mdepth_x);
             if (ptime) {
-                std::thread progt{&diffsim<T, G, H>::prog_thread, this, ptime};
-                progt.join();
+                std::thread{&diffsim<T, G, H>::prog_thread, this, ptime}.join();
+                // progt.join();
             }
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);
         }
         off_t to_dffr(const char *path) {
+            static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
+            static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
             if (!path || !*path)
                 throw std::invalid_argument{"Error: path cannot be nullptr or empty.\n"};
             int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
@@ -155,9 +159,9 @@ namespace diff {
             char hdr[] = {'D', 'F', 'F', 'R'};
             if (gtd::write_all(fd, hdr, sizeof(hdr)) != sizeof(hdr))
                 throw std::ios_base::failure{"Error: could not write .dffr file header.\n"};
-            constexpr static uint64_t sizeT = sizeof(T);
-            if (gtd::write_all(fd, &sizeT, sizeof(uint64_t)) != sizeof(uint64_t))
-                throw std::ios_base::failure{"Error: could not write .dffr file header.\n"};
+            constexpr static uint32_t sizeT = (uint32_t) sizeof(T);
+            if (gtd::write_all(fd, &sizeT, sizeof(uint32_t)) != sizeof(uint32_t))
+                throw std::ios_base::failure{"Error: could not write \"sizeof(T)\" to .dffr file.\n"};
             /* To be continued...
              * I am going to handle the variable x-bounds in two different ways:
              *     1. I will replace my trivial "aperture" struct with a "shape" class that can generate (x,y) points
