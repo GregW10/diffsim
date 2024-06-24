@@ -38,6 +38,38 @@ int main(int argc, char **argv) {
     std::cout << "DTTR_NX: " << dttr_nx << ", DTTR_NY: " << dttr_ny << std::endl;
     long double I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
     printf("Incident light intensity: %.30Lf\n", I0);
+    long double abstol_y = 0.0625l/(1024.0l*1024.0l);
+    long double reltol_y = 0.0625l/(1024.0l*1024.0l);
+    long double ptol_y   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_y    = diff::diffsim<double>::def_mdepth;
+    long double abstol_x = 0.0625l/(1024.0l*1024.0l);
+    long double reltol_x = 0.0625l/(1024.0l*1024.0l);
+    long double ptol_x   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_x    = diff::diffsim<double>::def_mdepth;
+    unsigned int threads = 0;
+    unsigned int ptime   = 1;
+    std::cout << "Starting simulation with the following parameters:"
+                 "\n\tAperture lower x-limit = " << XA       << " m"
+                 "\n\tAperture upper x-limit = " << XB       << " m"
+                 "\n\tAperture lower y-limit = " << YA       << " m"
+                 "\n\tAperture upper y-limit = " << YB       << " m"
+                 "\n\tWavelength of light    = " << LAMBDA      << " m"
+                 "\n\tDistance to detector   = " << DTTR_DIST        << " m"
+                 "\n\tWidth of detector      = " << DTTR_X        << " m"
+                 "\n\tLength of detector     = " << DTTR_Y        << " m"
+                 "\n\tDetector x-resolution  = " << dttr_nx       <<
+                 "\n\tDetector y-resolution  = " << dttr_ny       <<
+                 "\n\tLight intensity        = " << I0       << " W/m^2"
+                 "\n\tAbsolute y-tolerance   = " << abstol_y <<
+                 "\n\tRelative y-tolerance   = " << reltol_y <<
+                 "\n\tPeriodic y-tolerance   = " << ptol_y   <<
+                 "\n\tAbsolute x-tolerance   = " << abstol_x <<
+                 "\n\tRelative x-tolerance   = " << reltol_x <<
+                 "\n\tPeriodic x-tolerance   = " << ptol_x   <<
+                 "\n\tMax. y-recursion-depth = " << mdepth_y <<
+                 "\n\tMax. x-recursion-depth = " << mdepth_x <<
+                 "\n\tNumber of threads      = " << threads  <<
+                 "\n\tProgress time delay    = " << ptime    << " s\n";
     diff::aperture<long double, decltype(&gfunc), decltype(&hfunc)> ap{YA, YB, &gfunc, &hfunc};
     diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
     sim.diffract(0.0625l/(1024.0l*1024.0l),

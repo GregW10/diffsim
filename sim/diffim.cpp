@@ -53,7 +53,7 @@ struct sim_vals {
     const char *bmp_path;
 };
 
-template <typename T> requires (std::is_floating_point_v<T>)
+template <typename T, bool verbose> requires (std::is_floating_point_v<T>)
 int start_sim(gtd::parser &parser) {
     sim_vals<T> vals;
     vals.nx = parser.get_arg("--nx", (uint64_t) DEF_NX);
@@ -157,6 +157,15 @@ int start_sim(gtd::parser &parser) {
             fprintf(stderr, "\t\"%s\"\n", arg.second.c_str());
         return 1;
     }
+    if constexpr (verbose) {
+        if constexpr (std::same_as<T, long double>)
+            printf("Floating-point type: \"long double\"\n");
+        else if (std::same_as<T, double>)
+            printf("Floating-point type: \"double\"\n");
+        else
+            printf("Floating-point type: \"float\"\n");
+    }
+    vals.threads = vals.threads ? vals.threads : std::thread::hardware_concurrency();
     auto gfunc = [&vals](const T&){
         return vals.xa;
     };
@@ -165,6 +174,29 @@ int start_sim(gtd::parser &parser) {
     };
     using G = decltype(gfunc);
     using H = decltype(hfunc);
+    if constexpr (verbose)
+        std::cout << "Starting simulation with the following parameters:"
+                     "\n\tAperture lower x-limit = " << vals.xa       << " m"
+                     "\n\tAperture upper x-limit = " << vals.xb       << " m"
+                     "\n\tAperture lower y-limit = " << vals.ya       << " m"
+                     "\n\tAperture upper y-limit = " << vals.yb       << " m"
+                     "\n\tWavelength of light    = " << vals.lam      << " m"
+                     "\n\tDistance to detector   = " << vals.z        << " m"
+                     "\n\tWidth of detector      = " << vals.w        << " m"
+                     "\n\tLength of detector     = " << vals.l        << " m"
+                     "\n\tDetector x-resolution  = " << vals.nx       <<
+                     "\n\tDetector y-resolution  = " << vals.ny       <<
+                     "\n\tLight intensity        = " << vals.I0       << " W/m^2"
+                     "\n\tAbsolute y-tolerance   = " << vals.abstol_y <<
+                     "\n\tRelative y-tolerance   = " << vals.reltol_y <<
+                     "\n\tPeriodic y-tolerance   = " << vals.ptol_y   <<
+                     "\n\tAbsolute x-tolerance   = " << vals.abstol_x <<
+                     "\n\tRelative x-tolerance   = " << vals.reltol_x <<
+                     "\n\tPeriodic x-tolerance   = " << vals.ptol_x   <<
+                     "\n\tMax. y-recursion-depth = " << vals.mdepth_y <<
+                     "\n\tMax. x-recursion-depth = " << vals.mdepth_x <<
+                     "\n\tNumber of threads      = " << vals.threads  <<
+                     "\n\tProgress time delay    = " << vals.ptime    << " s\n";
     diff::aperture<T, G, H> ap{vals.ya, vals.yb, gfunc, hfunc};
     diff::diffimg<T, G, H> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     sim.diffract(vals.abstol_y,
@@ -177,22 +209,37 @@ int start_sim(gtd::parser &parser) {
                  vals.mdepth_x,
                  vals.threads,
                  vals.ptime);
-    printf("Terminado!\n");
-    sim.gen_bmp(cmap, vals.bmp_path);
+    if constexpr (verbose)
+        printf("Simulation completed, generating BMP...\n");
+    off_t bmp_size = sim.gen_bmp(cmap, vals.bmp_path);
+    if constexpr (verbose)
+        printf("BMP generated with a size of %llu bytes.\n", (unsigned long long) bmp_size);
     return 0;
 }
 
 int main(int argc, char **argv) {
     gtd::parser parser{argc, argv};
     const char *flt_type = parser.get_arg("-f");
-    if (!flt_type || gtd::str_eq(flt_type, "f"))
-        return start_sim<float>(parser);
-    if (gtd::str_eq(flt_type, "lf"))
-        return start_sim<double>(parser);
+    bool verbose = parser.get_arg("-v", false);
+    if (verbose) {
+        if (!flt_type || gtd::str_eq(flt_type, "Lf"))
+            return start_sim<long double, true>(parser);
+        if (gtd::str_eq(flt_type, "lf"))
+            return start_sim<double, true>(parser);
 #ifndef __CUDACC__
-    if (gtd::str_eq(flt_type, "Lf"))
-        return start_sim<long double>(parser);
+        if (gtd::str_eq(flt_type, "f"))
+            return start_sim<float, true>(parser);
 #endif
+    } else {
+        if (!flt_type || gtd::str_eq(flt_type, "Lf"))
+            return start_sim<long double, false>(parser);
+        if (gtd::str_eq(flt_type, "lf"))
+            return start_sim<double, false>(parser);
+#ifndef __CUDACC__
+        if (gtd::str_eq(flt_type, "f"))
+            return start_sim<float, false>(parser);
+#endif
+    }
     fprintf(stderr, "Error: invalid argument for \"-f\" flag, \"%s\".\n", flt_type);
     return 1;
 }
