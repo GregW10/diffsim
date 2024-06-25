@@ -50,7 +50,7 @@ struct sim_vals {
     T mdepth_x;
     uint64_t threads;
     uint64_t ptime;
-    const char *bmp_path;
+    std::string bmp_path;
 };
 
 template <typename T, bool verbose> requires (std::is_floating_point_v<T>)
@@ -213,7 +213,8 @@ int start_sim(gtd::parser &parser) {
         printf("Simulation completed, generating BMP...\n");
     off_t bmp_size = sim.gen_bmp(vals.bmp_path, cmap);
     if constexpr (verbose)
-        printf("BMP generated with a size of %llu bytes.\n", (unsigned long long) bmp_size);
+        printf("BMP written to \"%s\" with a size of %llu bytes.\n",
+               vals.bmp_path.c_str(), (unsigned long long) bmp_size);
     return 0;
 }
 

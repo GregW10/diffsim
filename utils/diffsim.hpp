@@ -43,6 +43,34 @@ namespace diff {
         uint64_t ny;
     };
 #pragma pack(pop)
+    template <gtd::numeric T, gtd::callret<T> F, bool rec_calls = false>
+    class functor {
+        F func;
+    public:
+        explicit functor(const F &f) : func{f} {}
+        inline T operator()(const T &val) const {
+            return this->func(val);
+        }
+    };
+    template <gtd::numeric T, gtd::callret<T> F>
+    class functor<T, F, true> {
+        F func;
+        uint64_t ncalls{};
+    public:
+        explicit functor(const F &f) : func{f} {}
+        inline T operator()(const T &val) {
+            ++ncalls;
+            return this->func(val);
+        }
+        uint64_t num_calls() const noexcept {
+            return this->ncalls;
+        }
+        uint64_t reset() const noexcept {
+            uint64_t num = this->ncalls;
+            this->ncalls = 0;
+            return num;
+        }
+    };
     template <gtd::numeric T, gtd::callret<T> G, gtd::callret<T> H>
     class aperture {
         uint32_t id;
@@ -62,17 +90,18 @@ namespace diff {
         }
         friend class diffsim<T, G, H>;
     };
-    template <gtd::numeric T, gtd::callret<T> G, gtd::callret<T> H>
-    class rectangle : public aperture<T, G, H> {
+    template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
+    class rectangle : public aperture<T, T (*)(const T&), T (*)(const T&)> {
+        using GH = T (*)(const T&);
         T xa;
         T xb;
     public:
         // using aperture<T, G, H>::aperture;
         rectangle(T _xa, T _xb, T _ya, T _yb) :
-        aperture<T, G, H>{0, _ya, _yb, [this](const T&){return this->xa;}, [this](const T&){return this->xb;}},
+        aperture<T, GH, GH>{0, _ya, _yb, [this](const T&){return this->xa;}, [this](const T&){return this->xb;}},
         xa{_xa}, xb{_xb} {}
         void write_ap_info(int fd) const {
-            if (gtd::write_all(fd, &(aperture<T, G, H>::id), sizeof(uint32_t)) != sizeof(uint32_t))
+            if (gtd::write_all(fd, &(aperture<T, GH, GH>::id), sizeof(uint32_t)) != sizeof(uint32_t))
                 throw std::ios_base::failure{"Error: could not write aperture ID to .dffr file.\n"};
             // static constexpr uint32_t sizeT = (uint32_t) sizeof(T);
             T vals[4] = {this->xa, this->xb, this->ya, this->yb};
@@ -94,7 +123,7 @@ namespace diff {
         T x, y, z;
     };
 #ifndef __CUDACC__
-    template <gtd::numeric T = long double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+    template <gtd::numeric T, gtd::callret<T> G, gtd::callret<T> H>
             requires (std::is_floating_point_v<T>)
 #else
     template <gtd::numeric T = double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
