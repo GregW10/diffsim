@@ -4,7 +4,6 @@
 #include "diffsim.hpp"
 // #include "../glib/nbod/gregbmp.hpp"
 #include <map>
-#include <sstream>
 
 namespace diff {
     class invalid_colour_format : public std::invalid_argument {
@@ -266,8 +265,8 @@ namespace diff {
             // std::cout << "MINV: " << minv << ", MAXV: " << maxv << std::endl;
             return {minv, maxv};
         }
-        void add_bmp_metadata(int fd) {
-            constexpr static uint64_t sizeT = sizeof(T);
+        void add_bmp_metadata(const dffr_info<T> *inf, int fd) {
+            /* constexpr static uint64_t sizeT = sizeof(T);
             if (gtd::write_all(fd, &sizeT, sizeof(uint64_t)) != sizeof(uint64_t) ||
                 gtd::write_all(fd, &(diffsim<T, G, H>::lambda), sizeof(T)) != sizeof(T) ||
                 gtd::write_all(fd, &(diffsim<T, G, H>::ap.ya), sizeof(T)) != sizeof(T) ||
@@ -276,12 +275,14 @@ namespace diff {
                 gtd::write_all(fd, &(diffsim<T, G, H>::xdttr), sizeof(T)) != sizeof(T) ||
                 gtd::write_all(fd, &(diffsim<T, G, H>::ydttr), sizeof(T)) != sizeof(T) ||
                 gtd::write_all(fd, &(diffsim<T, G, H>::E0), sizeof(T)) != sizeof(T))
+                throw std::ios_base::failure{"Error: could not write .bmp metadata.\n"}; */
+            if (gtd::write_all(fd, inf, sizeof(dffr_info<T>)) != sizeof(dffr_info<T>))
                 throw std::ios_base::failure{"Error: could not write .bmp metadata.\n"};
         }
     public:
         using diffsim<T, G, H>::diffsim;
         template <gtd::numeric C = T>
-        off_t gen_bmp(const colourmap<C> &cmap = cmaps<T>::bgr, const char *path = nullptr) {
+        off_t gen_bmp(std::string &path, const colourmap<C> &cmap = cmaps<T>::bgr) {
             uint64_t i = 0;
             uint64_t j;
             T *dptr = diffalloc<T>::data;
@@ -324,8 +325,15 @@ namespace diff {
                 ++i;
             }
             // char *fpath = const_cast<char*>(path);
-            std::ostringstream *oss{};
-            if (!path) {
+            dffr_info<T> info;
+            info.lam = this->lambda;
+            info.zd = this->zdist;
+            info.w = this->xdttr;
+            info.l = this->ydttr;
+            info.I_0 = this->I0;
+            info.nx = diffalloc<T>::nw;
+            info.ny = diffalloc<T>::nh;
+            if (path.empty()) {
                 /* // rem = 255;
                 errno = 0;
                 long lim = pathconf(".", _PC_NAME_MAX);
@@ -335,13 +343,14 @@ namespace diff {
                     lim = 1023;
                 fpath = new char[lim + 1];
                 snprintf(fpath, lim + 1, "difpat_lam"); */
-                oss = new std::ostringstream{};
-                *oss << "diffpat_lam" << diffsim<T, G, H>::lambda << "m_ya"
-                     << diffsim<T, G, H>::ap.ya << "m_yb" << diffsim<T, G, H>::ap.yb << "m_zd"
-                     << diffsim<T, G, H>::zdist
-                     << "_xdl" << diffsim<T, G, H>::xdttr << "m_ydl" << diffsim<T, G, H>::ydttr << "m_E0"
-                     << diffsim<T, G, H>::E0 << "Vpm.bmp";
-                path = oss->rdbuf()->view().data();
+                /* std::ostringstream oss{};
+                oss << "diffpat_lam" << diffsim<T, G, H>::lambda << "m_ya"
+                    << diffsim<T, G, H>::ap.ya << "m_yb" << diffsim<T, G, H>::ap.yb << "m_zd"
+                    << diffsim<T, G, H>::zdist
+                    << "m_xdl" << diffsim<T, G, H>::xdttr << "m_ydl" << diffsim<T, G, H>::ydttr << "m_E0"
+                    << diffsim<T, G, H>::E0 << "Vpm.bmp";
+                path = oss.rdbuf()->view().data(); */
+                diffsim<T, G, H>::ap->gen_fpath(info, ".bmp", path);
             }
             /* if (path)
                 bmp.set_path(path);
@@ -350,9 +359,7 @@ namespace diff {
             bmp.write();
             if (open)
                 bmp.open_image(); */
-            int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
-            if (oss)
-                delete oss;
+            int fd = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
             if (fd == -1)
                 throw std::ios_base::failure{"Error: could not open/create .bmp file.\n"};
             bmp_header header;
@@ -363,7 +370,8 @@ namespace diff {
                 throw std::ios_base::failure{"Error: could not write .bmp header.\n"};
             if (gtd::write_all(fd, bmp.get(), bmp_arrsize) != bmp_arrsize)
                 throw std::ios_base::failure{"Error: could not write .bmp colour array.\n"};
-            this->add_bmp_metadata(fd);
+            this->add_bmp_metadata(&info, fd);
+            diffsim<T, G, H>::ap->write_ap_info(fd);
             off_t pos = lseek(fd, 0, SEEK_CUR);
             if (close(fd) == -1)
                 throw std::ios_base::failure{"Error: could not close .bmp file.\n"};

@@ -150,7 +150,7 @@ int start_sim(gtd::parser &parser) {
     vals.threads = parser.get_arg("--threads", (uint64_t) 0);
     vals.ptime = parser.get_arg("--ptime", (uint64_t) 1);
     vals.bmp_path = parser.get_arg("-o");
-    std::cout << vals.ptol_y << ", " << vals.ptol_x << std::endl;
+    // std::cout << vals.ptol_y << ", " << vals.ptol_x << std::endl;
     if (!parser.empty()) {
         fprintf(stderr, "Error: unrecognised arguments have been passed:\n");
         for (const std::pair<int, std::string> &arg : parser)
@@ -197,7 +197,7 @@ int start_sim(gtd::parser &parser) {
                      "\n\tMax. x-recursion-depth = " << vals.mdepth_x <<
                      "\n\tNumber of threads      = " << vals.threads  <<
                      "\n\tProgress time delay    = " << vals.ptime    << " s\n";
-    diff::aperture<T, G, H> ap{vals.ya, vals.yb, gfunc, hfunc};
+    diff::rectangle<T, G, H> ap{vals.xa, vals.xb, vals.ya, vals.yb};
     diff::diffimg<T, G, H> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     sim.diffract(vals.abstol_y,
                  vals.reltol_y,
@@ -211,7 +211,7 @@ int start_sim(gtd::parser &parser) {
                  vals.ptime);
     if constexpr (verbose)
         printf("Simulation completed, generating BMP...\n");
-    off_t bmp_size = sim.gen_bmp(cmap, vals.bmp_path);
+    off_t bmp_size = sim.gen_bmp(vals.bmp_path, cmap);
     if constexpr (verbose)
         printf("BMP generated with a size of %llu bytes.\n", (unsigned long long) bmp_size);
     return 0;
