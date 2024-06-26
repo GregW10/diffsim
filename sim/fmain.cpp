@@ -14,16 +14,16 @@
 #define LASER_POWER 0.005l // 5 mW laser
 #define BEAM_DIAMETER 0.001l // 1 mm beam diameter
 
-long double gfunc(const long double&) {
+float gfunc(const float&) {
     return XA;
 }
 
-long double hfunc(const long double&) {
+float hfunc(const float&) {
     return XB;
 }
 
-long double beam_intensity(const long double &laser_power, const long double &beam_diam) {
-    long double r = beam_diam/2;
+float beam_intensity(const float &laser_power, const float &beam_diam) {
+    float r = beam_diam/2;
     return laser_power/(PI*r*r);
 }
 
@@ -36,16 +36,16 @@ int main(int argc, char **argv) {
     } else if (argc != 1)
         return 1;
     std::cout << "DTTR_NX: " << dttr_nx << ", DTTR_NY: " << dttr_ny << std::endl;
-    long double I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
-    printf("Incident light intensity: %.30Lf\n", I0);
-    long double abstol_y = 0.0625l/(1024.0l*1024.0l);
-    long double reltol_y = 0.0625l/(1024.0l*1024.0l);
-    long double ptol_y   = -1/(1024.0l*1024.0l*1024.0l);
-    uint64_t mdepth_y    = diff::diffsim<double>::def_mdepth;
-    long double abstol_x = 0.0625l/(1024.0l*1024.0l);
-    long double reltol_x = 0.0625l/(1024.0l*1024.0l);
-    long double ptol_x   = -1/(1024.0l*1024.0l*1024.0l);
-    uint64_t mdepth_x    = diff::diffsim<double>::def_mdepth;
+    float I0 = beam_intensity(LASER_POWER, BEAM_DIAMETER);
+    printf("Incident light intensity: %.30f\n", I0);
+    float abstol_y = 0.0625l/(1024.0l*1024.0l);
+    float reltol_y = 0.0625l/(1024.0l*1024.0l);
+    float ptol_y   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_y    = diff::diffsim<float>::def_mdepth;
+    float abstol_x = 0.0625l/(1024.0l*1024.0l);
+    float reltol_x = 0.0625l/(1024.0l*1024.0l);
+    float ptol_x   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_x    = diff::diffsim<float>::def_mdepth;
     unsigned int threads = 0;
     unsigned int ptime   = 1;
     std::cout << "Starting simulation with the following parameters:"
@@ -70,8 +70,8 @@ int main(int argc, char **argv) {
                  "\n\tMax. x-recursion-depth = " << mdepth_x <<
                  "\n\tNumber of threads      = " << threads  <<
                  "\n\tProgress time delay    = " << ptime    << " s\n";
-    diff::rectangle<long double> ap{XA, XB, YA, YB};
-    diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
+    diff::rectangle<float> ap{XA, XB, YA, YB};
+    diff::diffimg<float> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
     sim.diffract(abstol_y,
                  reltol_y,
                  ptol_y,
@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
                  mdepth_x,
                  1,
                  1);
+    // std::cout << "Max. depth reached in y: " << mdepth_y << ", in x: " << mdepth_x << std::endl;
     std::string path;
     sim.gen_bmp(path);
     std::cout << "BMP written to: " << path << std::endl;
@@ -89,10 +90,10 @@ int main(int argc, char **argv) {
     path += "dffr";
     sim.to_dffr(path);
     std::cout << "DFFR written to: " << path << std::endl;
-    gtd::complex<long double> c{1, 1};
+    gtd::complex<float> c{1, 1};
     // std::cout << gtd::abs(c) << std::endl;
     std::cout << c.mag() << std::endl;
-    long double s = 255.9;
+    float s = 255.9;
     unsigned char x = s;
     std::cout << +x << std::endl;
     return 0;

@@ -240,11 +240,11 @@ namespace diff {
     };
 #pragma pack(pop)
 #ifndef __CUDACC__
-    template <gtd::numeric T = long double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+    template <gtd::numeric T = long double>//, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
 #else
-    template <gtd::numeric T = double, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+    template <gtd::numeric T = double>//, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
 #endif
-    class diffimg : public diffsim<T, G, H> {
+    class diffimg : public diffsim<T> {
         // gtd::bmp bmp{diffalloc<T>::nw, diffalloc<T>::nh};
         // gtd::mmapper bmp{diffalloc<T>::nb};
         std::pair<T, T> minmax_vals() const noexcept {
@@ -280,7 +280,7 @@ namespace diff {
                 throw std::ios_base::failure{"Error: could not write .bmp metadata.\n"};
         }
     public:
-        using diffsim<T, G, H>::diffsim;
+        using diffsim<T>::diffsim;
         template <gtd::numeric C = T>
         off_t gen_bmp(std::string &path, const colourmap<C> &cmap = cmaps<T>::bgr) {
             uint64_t i = 0;
@@ -350,7 +350,7 @@ namespace diff {
                     << "m_xdl" << diffsim<T, G, H>::xdttr << "m_ydl" << diffsim<T, G, H>::ydttr << "m_E0"
                     << diffsim<T, G, H>::E0 << "Vpm.bmp";
                 path = oss.rdbuf()->view().data(); */
-                diffsim<T, G, H>::ap->gen_fpath(info, ".bmp", path);
+                diffsim<T>::ap->gen_fpath(info, ".bmp", &path);
             }
             /* if (path)
                 bmp.set_path(path);
@@ -371,7 +371,7 @@ namespace diff {
             if (gtd::write_all(fd, bmp.get(), bmp_arrsize) != bmp_arrsize)
                 throw std::ios_base::failure{"Error: could not write .bmp colour array.\n"};
             this->add_bmp_metadata(&info, fd);
-            diffsim<T, G, H>::ap->write_ap_info(fd);
+            diffsim<T>::ap->write_ap_info(fd);
             off_t pos = lseek(fd, 0, SEEK_CUR);
             if (close(fd) == -1)
                 throw std::ios_base::failure{"Error: could not close .bmp file.\n"};

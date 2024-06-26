@@ -50,7 +50,8 @@ struct sim_vals {
     T mdepth_x;
     uint64_t threads;
     uint64_t ptime;
-    std::string bmp_path;
+    std::string dffr_path{};
+    std::string bmp_path{};
 };
 
 template <typename T, bool verbose> requires (std::is_floating_point_v<T>)
@@ -149,14 +150,26 @@ int start_sim(gtd::parser &parser) {
     vals.mdepth_x = parser.get_arg("--mdepth_x", DEF_MDX);
     vals.threads = parser.get_arg("--threads", (uint64_t) 0);
     vals.ptime = parser.get_arg("--ptime", (uint64_t) 1);
-    vals.bmp_path = parser.get_arg("-o");
-    // std::cout << vals.ptol_y << ", " << vals.ptol_x << std::endl;
+    const char *dffr_path = parser.get_arg("--dffr");
+    bool no_dffr = parser.get_arg("--no_dffr", false);
+    const char *bmp_path = parser.get_arg("--bmp");
+    bool no_bmp = parser.get_arg("--no_bmp", false);
     if (!parser.empty()) {
         fprintf(stderr, "Error: unrecognised arguments have been passed:\n");
         for (const std::pair<int, std::string> &arg : parser)
             fprintf(stderr, "\t\"%s\"\n", arg.second.c_str());
         return 1;
     }
+    if (dffr_path) {
+        vals.dffr_path = dffr_path;
+        no_dffr = false; // overriden by presence of dffr_path
+    }
+    if (bmp_path) {
+        vals.bmp_path = bmp_path;
+        no_bmp = false; // override by presence of bmp_path
+    }
+    if (no_dffr && no_bmp)
+        return 0;
     if constexpr (verbose) {
         if constexpr (std::same_as<T, long double>)
             printf("Floating-point type: \"long double\"\n");
@@ -166,14 +179,6 @@ int start_sim(gtd::parser &parser) {
             printf("Floating-point type: \"float\"\n");
     }
     vals.threads = vals.threads ? vals.threads : std::thread::hardware_concurrency();
-    auto gfunc = [&vals](const T&){
-        return vals.xa;
-    };
-    auto hfunc = [&vals](const T&){
-        return vals.xb;
-    };
-    using G = decltype(gfunc);
-    using H = decltype(hfunc);
     if constexpr (verbose)
         std::cout << "Starting simulation with the following parameters:"
                      "\n\tAperture lower x-limit = " << vals.xa       << " m"
@@ -197,8 +202,8 @@ int start_sim(gtd::parser &parser) {
                      "\n\tMax. x-recursion-depth = " << vals.mdepth_x <<
                      "\n\tNumber of threads      = " << vals.threads  <<
                      "\n\tProgress time delay    = " << vals.ptime    << " s\n";
-    diff::rectangle<T, G, H> ap{vals.xa, vals.xb, vals.ya, vals.yb};
-    diff::diffimg<T, G, H> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
+    diff::rectangle<T> ap{vals.xa, vals.xb, vals.ya, vals.yb};
+    diff::diffimg<T> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     sim.diffract(vals.abstol_y,
                  vals.reltol_y,
                  vals.ptol_y,
@@ -209,12 +214,29 @@ int start_sim(gtd::parser &parser) {
                  vals.mdepth_x,
                  vals.threads,
                  vals.ptime);
-    if constexpr (verbose)
-        printf("Simulation completed, generating BMP...\n");
-    off_t bmp_size = sim.gen_bmp(vals.bmp_path, cmap);
-    if constexpr (verbose)
-        printf("BMP written to \"%s\" with a size of %llu bytes.\n",
-               vals.bmp_path.c_str(), (unsigned long long) bmp_size);
+    if (!no_dffr) {
+        if constexpr (verbose)
+            printf("Simulation completed, generating DFFR...\n");
+        bool was_empty = vals.dffr_path.empty() && vals.bmp_path.empty() && !no_bmp;
+        off_t dffr_size = sim.to_dffr(vals.dffr_path);
+        if constexpr (verbose)
+            printf("DFFR file written to \"%s\" with a size of %llu bytes.\n",
+                   vals.dffr_path.c_str(), (unsigned long long) dffr_size);
+        if (was_empty) {
+            auto _end = vals.dffr_path.end();
+            vals.dffr_path.erase(_end - 4, _end);
+            vals.dffr_path += "bmp";
+            vals.bmp_path = std::move(vals.dffr_path);
+        }
+    }
+    if (!no_bmp) {
+        if constexpr (verbose)
+            printf("Simulation completed, generating BMP...\n");
+        off_t bmp_size = sim.gen_bmp(vals.bmp_path, cmap);
+        if constexpr (verbose)
+            printf("BMP written to \"%s\" with a size of %llu bytes.\n",
+                   vals.bmp_path.c_str(), (unsigned long long) bmp_size);
+    }
     return 0;
 }
 
