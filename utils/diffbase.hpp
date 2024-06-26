@@ -342,6 +342,7 @@ namespace diff {
         T dxo4 = dx/4;
         T dxo6 = dx/6;
         T dxo12 = dx/12;
+        ptol /= dxo4; // to avoid precision issues with CROSS comparisons below
         T m2 = (a + b)/2;
         T m1 = m2 - dxo4;
         T m3 = m2 + dxo4;
@@ -359,40 +360,37 @@ namespace diff {
         bool left = false;
         uint64_t bitmask;
         T absval;
-        uint64_t counter = 0;
+        bool reached = false;
+        // uint64_t reach = (uint64_t) -1;
 // #define CROSS std::abs(dxo2*((fm2 - fb) + (fm2 - fa)))
 #define BT fm1mfm2 = fm1 - fm2; fm2mfm3 = fm2 - fm3;
-#define CROSS1 std::abs(dxo4*(fm1mfm2 + (fm1 - fa))) // see if I can save on computation here
-#define CROSS2 std::abs(dxo4*(fm2mfm3 - fm1mfm2))
-#define CROSS3 std::abs(dxo4*((fm3 - fb) - fm2mfm3))
-#define CCROSSr1 std::abs(dxo4*(fm1mfm2._real + (fm1._real - fa._real))) // see if I can save on computation here
-#define CCROSSr2 std::abs(dxo4*(fm2mfm3._real - fm1mfm2._real))
-#define CCROSSr3 std::abs(dxo4*((fm3._real - fb._real) - fm2mfm3._real))
-#define CCROSSi1 std::abs(dxo4*(fm1mfm2._imag + (fm1._imag - fa._imag))) // see if I can save on computation here
-#define CCROSSi2 std::abs(dxo4*(fm2mfm3._imag - fm1mfm2._imag))
-#define CCROSSi3 std::abs(dxo4*((fm3._imag - fb._imag) - fm2mfm3._imag))
+#define CROSS1   std::abs(/*dxo4**/(fm1mfm2 + (fm1 - fa))) // see if I can save on computation here
+#define CROSS2   std::abs(/*dxo4**/(fm2mfm3 - fm1mfm2))
+#define CROSS3   std::abs(/*dxo4**/((fm3 - fb) - fm2mfm3))
+#define CCROSSr1 std::abs(/*dxo4**/(fm1mfm2._real + (fm1._real - fa._real))) // see if I can save on computation here
+#define CCROSSr2 std::abs(/*dxo4**/(fm2mfm3._real - fm1mfm2._real))
+#define CCROSSr3 std::abs(/*dxo4**/((fm3._real - fb._real) - fm2mfm3._real))
+#define CCROSSi1 std::abs(/*dxo4**/(fm1mfm2._imag + (fm1._imag - fa._imag))) // see if I can save on computation here
+#define CCROSSi2 std::abs(/*dxo4**/(fm2mfm3._imag - fm1mfm2._imag))
+#define CCROSSi3 std::abs(/*dxo4**/((fm3._imag - fb._imag) - fm2mfm3._imag))
 #define CROSS(num) \
-        if constexpr (std::same_as<R, gtd::complex<T>>) {\
-            std::cout << "CCROSSr1: " << CCROSSr1 << "CCROSSr2: " << CCROSSr2 << "CCROSSr3: " << CCROSSr3 << std::endl;\
-            std::cout << "CCROSSi1: " << CCROSSi1 << "CCROSSi2: " << CCROSSi2 << "CCROSSi3: " << CCROSSi3 << std::endl;\
-            std::cout << "ptol: " << ptol << ", dxo4: " << dxo4 << std::endl; \
+        if constexpr (std::same_as<R, gtd::complex<T>>) { \
             if (CCROSSr1 <= ptol && CCROSSr2 <= ptol && CCROSSr3 <= ptol && \
                 CCROSSi1 <= ptol && CCROSSi2 <= ptol && CCROSSi3 <= ptol) {goto divide_##num;} \
         } else { /* printf("c1: %lf, c2: %lf, c3: %lf, ptol: %lf\n", CROSS1, CROSS2, CROSS3, ptol); */ \
-            std::cout << "CROSS1: " << CROSS1 << "CROSS2: " << CROSS2 << "CROSS3: " << CROSS3 << std::endl; \
             if (CROSS1 <= ptol && CROSS2 <= ptol && CROSS3 <= ptol) {goto divide_##num;} \
         }
-#define SIMPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2) \
+#define SIMPQUAD_LOOP(par0, par00, par1, par2, par3, lab1, lab2, par000) \
         while (1) { \
+            if (!reached && (a == m1 || m1 == m2 || m2 == m3 || m3 == b)) \
+            {reached = true; par000; ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); \
+            goto lab2;} \
             par1 \
             faPfb = fa + fb; \
             estimate = dxo6*(faPfb + 4*fm2); \
             ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3); \
             par2 \
             if ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(reltol*ires)) { \
-                std::cout << "absval: " << absval << ", gtd::abs(ires - estimate): " << gtd::abs(ires - estimate) \
-                          << ", abstol: " << abstol << ", reltol: " << reltol \
-                          << ", gtd::abs(reltol*ires): " << gtd::abs(reltol*ires) << std::endl; \
                 lab1: \
                 dx = dxo2; \
                 dxo2 = dxo4; \
@@ -420,13 +418,10 @@ namespace diff {
                     /* return (R) printf("Terminated\n"); */ \
                 /* printf("ires._real: %.30f, ires._imag: %.30f, estimate._real: %.30f, estimate._imag: %.30f\n", */ \
                        /* ires._real, ires._imag, estimate._real, estimate._imag); */ \
-               printf("stack._size: %zu\n", (size_t) stack._size); \
             } \
             else { \
                 lab2: \
                 res += ires; \
-                if (counter++ > 1'000'000) \
-                    return res; \
                 if constexpr (prog) { \
                     printf("%.5Lf%% complete\r", ((((long double) b) - global_a)/global_range)*100); \
                     fflush(stdout); \
@@ -498,47 +493,65 @@ namespace diff {
             if (mdepth) {
                 // uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
+                    uint64_t reach = (uint64_t) -1;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                    SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/std::pow(4, stack._size);, EMPTY, BT CROSS(1),
-                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_1, other_1)
+                    SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/std::pow(4, stack._size);,
+                                  else if (stack._size == reach)
+                                      {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_1;},
+                                  BT CROSS(1),
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_1, other_1,
+                                  reach = stack._size)
                 } else {
                     // printf("in here.\n");
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                     SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/std::pow(4, stack._size);,
-                                  if (stack._size == max_depth)
+                                  else if (stack._size == max_depth/* || stack._size == reach*/)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_2;}, BT
                                   CROSS(2),
-                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_2, other_2)
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_2, other_2,
+                                  max_depth = stack._size)
                 }
             } else {
+                uint64_t reach = (uint64_t) -1;
                 gtd::stack<uint64_t> tree{8};
                 SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/std::pow(4, stack._size);, // can't do bit-shifting
-                              EMPTY, BT CROSS(3),
-                              EMPTY, divide_3, other_3)
+                              else if (stack._size == reach)
+                              {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_3;},
+                              BT CROSS(3),
+                              EMPTY, divide_3, other_3, reach = stack._size)
             }
         } else {
             if (mdepth) {
                 // uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
+                    uint64_t reach = (uint64_t) -1;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{8};
-                    SIMPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY,
-                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_4, other_4)
+                    SIMPQUAD_LOOP(EMPTY, EMPTY,
+                                  else if (stack._size == reach)
+                                  {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_4;}, EMPTY,
+                                  if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_4, other_4,
+                                  reach = stack._size)
                 } else {
                     uint64_t max_depth = *mdepth;
                     *mdepth = 0;
                     gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                     SIMPQUAD_LOOP(EMPTY, EMPTY,
-                                  if (stack._size == max_depth)
+                                  else if (stack._size == max_depth/* || stack._size == reach*/)
                                   {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_5;},
-                                  EMPTY, if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_5, other_5)
+                                  EMPTY, if (stack._size > *mdepth) {*mdepth = stack._size;}, divide_5, other_5,
+                                  max_depth = stack._size)
                 }
             } else {
+                uint64_t reach = (uint64_t) -1;
                 gtd::stack<uint64_t> tree{8};
-                SIMPQUAD_LOOP(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_6, other_6)
+                SIMPQUAD_LOOP(EMPTY, EMPTY,
+                              else if (stack._size == reach)
+                              {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_6;},
+                              EMPTY, EMPTY, divide_6, other_6, reach = stack._size)
             }
         }
 #undef SIMPQUAD_LOOP
@@ -583,15 +596,15 @@ namespace diff {
 #define XDEPTH if (maxx_depth > *mdepth_x) *mdepth_x = maxx_depth; maxx_depth = org_mxd;
 // #define CROSS std::abs(dyo2*((fym2 - fyb) + (fym2 - fya)))
 #define BT fym1mfym2 = fym1 - fym2; fym2mfym3 = fym2 - fym3;
-#define CROSS1 std::abs(dyo4*(fym1mfym2 + (fym1 - fya))) // see if I can save on computation here
-#define CROSS2 std::abs(dyo4*(fym2mfym3 - fym1mfym2))
-#define CROSS3 std::abs(dyo4*((fym3 - fyb) - fym2mfym3))
-#define CCROSSr1 std::abs(dyo4*(fym1mfym2._real + (fym1._real - fya._real))) // see if I can save on computation here
-#define CCROSSr2 std::abs(dyo4*(fym2mfym3._real - fym1mfym2._real))
-#define CCROSSr3 std::abs(dyo4*((fym3._real - fyb._real) - fym2mfym3._real))
-#define CCROSSi1 std::abs(dyo4*(fym1mfym2._imag + (fym1._imag - fya._imag))) // see if I can save on computation here
-#define CCROSSi2 std::abs(dyo4*(fym2mfym3._imag - fym1mfym2._imag))
-#define CCROSSi3 std::abs(dyo4*((fym3._imag - fyb._imag) - fym2mfym3._imag))
+#define CROSS1   std::abs(/*dyo4**/(fym1mfym2 + (fym1 - fya))) // see if I can save on computation here
+#define CROSS2   std::abs(/*dyo4**/(fym2mfym3 - fym1mfym2))
+#define CROSS3   std::abs(/*dyo4**/((fym3 - fyb) - fym2mfym3))
+#define CCROSSr1 std::abs(/*dyo4**/(fym1mfym2._real + (fym1._real - fya._real))) // see if I can save on computation here
+#define CCROSSr2 std::abs(/*dyo4**/(fym2mfym3._real - fym1mfym2._real))
+#define CCROSSr3 std::abs(/*dyo4**/((fym3._real - fyb._real) - fym2mfym3._real))
+#define CCROSSi1 std::abs(/*dyo4**/(fym1mfym2._imag + (fym1._imag - fya._imag))) // see if I can save on computation here
+#define CCROSSi2 std::abs(/*dyo4**/(fym2mfym3._imag - fym1mfym2._imag))
+#define CCROSSi3 std::abs(/*dyo4**/((fym3._imag - fyb._imag) - fym2mfym3._imag))
 #define CROSS(num) \
         if constexpr (std::same_as<R, gtd::complex<T>>) { \
             if (CCROSSr1 <= ptol_y && CCROSSr2 <= ptol_y && CCROSSr3 <= ptol_y && \
@@ -607,6 +620,7 @@ namespace diff {
         T dyo4 = dy/4;
         T dyo6 = dy/6;
         T dyo12 = dy/12;
+        ptol_y /= dyo4;
         T ym2 = (ya + yb)/2;
         T ym1 = ym2 - dyo4;
         T ym3 = ym2 + dyo4;
@@ -628,8 +642,8 @@ namespace diff {
         R fym1mfym2;
         R fym2mfym3;
         uint64_t *mptr;
-        uint64_t counter = 0;
-#define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after) \
+        bool reached = false;
+#define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after, par000) \
         y = ya; \
         fya = simpquad<T, R, FL, false>(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, mptr); after \
         y = ym1; \
@@ -641,6 +655,9 @@ namespace diff {
         y = yb; \
         fyb = simpquad<T, R, FL, false>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr); after \
         while (1) { \
+            if (!reached && (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)) \
+            {reached = true; par000; ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); \
+            goto lab2;} \
             par1 \
             fyaPfyb = fya + fyb; \
             estimate = dyo6*(fyaPfyb + 4*fym2); \
@@ -680,8 +697,6 @@ namespace diff {
                     fflush(stdout); \
                 } \
                 res += ires; \
-                if (counter++ > 1'000'000) \
-                    return res; \
                 if (left) { \
                     ya = yb; \
                     ym1 += dy; \
@@ -755,6 +770,7 @@ namespace diff {
             if (mdepth_y) {
                 // uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
+                    uint64_t reach = (uint64_t) -1;
                     if (mdepth_x) {
                         uint64_t maxx_depth = *mdepth_x;
                         const uint64_t org_mxd = *mdepth_x;
@@ -762,18 +778,22 @@ namespace diff {
                         mptr = &maxx_depth;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                        SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);, EMPTY, BT
-                                         CROSS(11),
+                        SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
+                                         else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_11;},
+                                         BT CROSS(11),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_11, other_11, XDEPTH)
+                                         divide_11, other_11, XDEPTH, reach = stack._size)
                     } else {
                         mptr = nullptr;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
-                        SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);, EMPTY, BT
-                                         CROSS(12),
+                        SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
+                                         else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_12;},
+                                         BT CROSS(12),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_12, other_12, EMPTY)
+                                         divide_12, other_12, EMPTY, reach = stack._size)
                     }
                 } else {
                     if (mdepth_x) {
@@ -785,46 +805,52 @@ namespace diff {
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                         SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
-                                         if (stack._size == max_depth)
+                                         else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_21;}, BT
                                          CROSS(21),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_21, other_21, XDEPTH)
+                                         divide_21, other_21, XDEPTH, max_depth = stack._size)
                     } else {
                         mptr = nullptr;
                         uint64_t max_depth = *mdepth_y;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                         SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
-                                         if (stack._size == max_depth)
+                                         else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_22;}, BT
                                          CROSS(22),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_22, other_22, EMPTY)
+                                         divide_22, other_22, EMPTY, max_depth = stack._size)
                     }
                 }
             } else {
+                uint64_t reach = (uint64_t) -1;
                 if (mdepth_x) {
                     uint64_t maxx_depth = *mdepth_x;
                     const uint64_t org_mxd = *mdepth_x;
                     *mdepth_x = 0;
                     mptr = &maxx_depth;
                     gtd::stack<uint64_t> tree{8};
-                    SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);, EMPTY, BT
-                                     CROSS(31),
-                                     EMPTY, divide_31, other_31, XDEPTH)
+                    SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
+                                     else if (stack._size == reach)
+                                     {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_31;},
+                                     BT CROSS(31),
+                                     EMPTY, divide_31, other_31, XDEPTH, reach = stack._size)
                 } else {
                     mptr = nullptr;
                     gtd::stack<uint64_t> tree{8};
-                    SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);, EMPTY, BT
-                                     CROSS(32),
-                                     EMPTY, divide_32, other_32, EMPTY)
+                    SIMPDBLQUAD_MOST(ptol_y /= 4;, ptol_y = org_ptol_y/std::pow(4, stack._size);,
+                                     else if (stack._size == reach)
+                                     {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_32;},
+                                     BT CROSS(32),
+                                     EMPTY, divide_32, other_32, EMPTY, reach = stack._size)
                 }
             }
         } else {
             if (mdepth_y) {
                 // uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
+                    uint64_t reach = (uint64_t) -1;
                     if (mdepth_x) {
                         uint64_t maxx_depth = *mdepth_x;
                         const uint64_t org_mxd = *mdepth_x;
@@ -832,16 +858,20 @@ namespace diff {
                         mptr = &maxx_depth;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{8};
-                        SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY,
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                         else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_41;}, EMPTY,
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_41, other_41, XDEPTH)
+                                         divide_41, other_41, XDEPTH, reach = stack._size)
                     } else {
                         mptr = nullptr;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{8};
-                        SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY,
+                        SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                         else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_42;}, EMPTY,
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_42, other_42, EMPTY)
+                                         divide_42, other_42, EMPTY, reach = stack._size)
                     }
                 } else {
                     if (mdepth_x) {
@@ -853,34 +883,41 @@ namespace diff {
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                         SIMPDBLQUAD_MOST(EMPTY, EMPTY,
-                                         if (stack._size == max_depth)
+                                         else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_51;},
                                          EMPTY, if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_51, other_51, XDEPTH)
+                                         divide_51, other_51, XDEPTH, max_depth = stack._size)
                     } else {
                         mptr = nullptr;
                         uint64_t max_depth = *mdepth_y;
                         *mdepth_y = 0;
                         gtd::stack<uint64_t> tree{max_depth % 64 ? max_depth/64 + 1 : max_depth/64};
                         SIMPDBLQUAD_MOST(EMPTY, EMPTY,
-                                         if (stack._size == max_depth)
+                                         else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_52;},
                                          EMPTY, if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_52, other_52, EMPTY)
+                                         divide_52, other_52, EMPTY, max_depth = stack._size)
                     }
                 }
             } else {
+                uint64_t reach = (uint64_t) -1;
                 if (mdepth_x) {
                     uint64_t maxx_depth = *mdepth_x;
                     const uint64_t org_mxd = *mdepth_x;
                     *mdepth_x = 0;
                     mptr = &maxx_depth;
                     gtd::stack<uint64_t> tree{8};
-                    SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_61, other_61, XDEPTH)
+                    SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                     else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_61;},
+                                     EMPTY, EMPTY, divide_61, other_61, XDEPTH, reach=stack._size)
                 } else {
                     mptr = nullptr;
                     gtd::stack<uint64_t> tree{8};
-                    SIMPDBLQUAD_MOST(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, divide_62, other_62, EMPTY)
+                    SIMPDBLQUAD_MOST(EMPTY, EMPTY,
+                                     else if (stack._size == reach)
+                                         {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_62;},
+                                     EMPTY, EMPTY, divide_62, other_62, EMPTY, reach=stack._size)
                 }
             }
         }

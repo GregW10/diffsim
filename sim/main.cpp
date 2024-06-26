@@ -40,13 +40,13 @@ int main(int argc, char **argv) {
     printf("Incident light intensity: %.30Lf\n", I0);
     long double abstol_y = 0.0625l/(1024.0l*1024.0l);
     long double reltol_y = 0.0625l/(1024.0l*1024.0l);
-    long double ptol_y   = -1/(1024.0l*1024.0l*1024.0l);
-    uint64_t mdepth_y    = diff::diffsim<double>::def_mdepth;
+    long double ptol_y   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_y    = diff::diffsim<long double>::def_mdepth;
     long double abstol_x = 0.0625l/(1024.0l*1024.0l);
     long double reltol_x = 0.0625l/(1024.0l*1024.0l);
-    long double ptol_x   = -1/(1024.0l*1024.0l*1024.0l);
-    uint64_t mdepth_x    = diff::diffsim<double>::def_mdepth;
-    unsigned int threads = 0;
+    long double ptol_x   = 1/(1024.0l*1024.0l*1024.0l);
+    uint64_t mdepth_x    = diff::diffsim<long double>::def_mdepth;
+    unsigned int threads = 1;
     unsigned int ptime   = 1;
     std::cout << "Starting simulation with the following parameters:"
                  "\n\tAperture lower x-limit = " << XA       << " m"
@@ -72,16 +72,17 @@ int main(int argc, char **argv) {
                  "\n\tProgress time delay    = " << ptime    << " s\n";
     diff::rectangle<long double> ap{XA, XB, YA, YB};
     diff::diffimg<long double> sim{LAMBDA, ap, DTTR_DIST, DTTR_X, DTTR_Y, I0, dttr_nx, dttr_ny};
-    sim.diffract(abstol_y,
-                 reltol_y,
+    sim.diffract(abstol_y,//*1024.0l,
+                 reltol_y,//*1024.0l,
                  ptol_y,
                  mdepth_y,
-                 abstol_x,
-                 reltol_x,
+                 abstol_x,//*1024.0l,
+                 reltol_x,//*1024.0l,
                  ptol_x,
                  mdepth_x,
-                 1,
-                 1);
+                 threads,
+                 ptime);
+    // std::cout << "Max. depth reached in y: " << mdepth_y << ", in x: " << mdepth_x << std::endl;
     std::string path;
     sim.gen_bmp(path);
     std::cout << "BMP written to: " << path << std::endl;

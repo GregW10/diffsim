@@ -1,4 +1,4 @@
 #!/bin/bash
 
-rm -rfv *.bmp *.dffr
+rm -rf *.bmp *.dffr
 
