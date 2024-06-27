@@ -49,9 +49,7 @@ namespace diff {
         uint64_t nh{}; // height of detector (in pixels)
         uint64_t np{}; // total number of pixels in detector
         uint64_t nb = np*sizeof(T); // total number of bytes allocated
-    private:
         gtd::mmapper mapper{np*sizeof(T)}; // gtd::mmapper object to take care of allocation using mmap
-    protected:
         T *data = (T*) mapper.get(); // pointer to data on host
 #ifdef __CUDACC__
         T *gdat{}; // pointer to data on device

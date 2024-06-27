@@ -32,13 +32,15 @@ namespace diff {
     template <typename T = long double> requires (std::is_floating_point_v<T>)
     class colours {
     public:
-        constexpr static colour<T> white   = {1.0l, 1.0l, 1.0l};
-        constexpr static colour<T> black   = {0.0l, 0.0l, 0.0l};
-        constexpr static colour<T> blue    = {0.0l, 0.0l, 1.0l};
-        constexpr static colour<T> green   = {0.0l, 1.0l, 0.0l};
-        constexpr static colour<T> red     = {1.0l, 0.0l, 0.0l};
-        constexpr static colour<T> magenta = {1.0l, 0.0l, 1.0l};
-        constexpr static colour<T> cyan    = {0.0l, 1.0l, 1.0l};
+        constexpr static colour<T> white    = {1.0l, 1.0l, 1.0l};
+        constexpr static colour<T> black    = {0.0l, 0.0l, 0.0l};
+        constexpr static colour<T> blue     = {0.0l, 0.0l, 1.0l};
+        constexpr static colour<T> green    = {0.0l, 1.0l, 0.0l};
+        constexpr static colour<T> red      = {1.0l, 0.0l, 0.0l};
+        constexpr static colour<T> magenta  = {1.0l, 0.0l, 1.0l};
+        constexpr static colour<T> cyan     = {0.0l, 1.0l, 1.0l};
+        constexpr static colour<T> hot_pink = {1.0l, 0.41176l, 0.70588l};
+        constexpr static colour<T> pink     = {1.0l, 0.75294l, 0.79608l};
         static inline const std::map<const char*, colour<T>> all_cols = {
                 {"white", white},
                 {"black", black},
@@ -220,9 +222,15 @@ namespace diff {
         static inline const colourmap<T> bgr = {{0.0l, colours<T>::blue},
                                                 {0.5l, colours<T>::green},
                                                 {1.0l, colours<T>::red}};
+        static inline const colourmap<T> gbw = {{0.0l, colours<T>::green},
+                                                {0.5l, colours<T>::blue},
+                                                {1.0l, colours<T>::white}};
+        static inline const colourmap<T> gp  = {{0.0l, colours<T>::green},
+                                                {1.0l, colours<T>::pink}};
         static inline const std::map<std::string, colourmap<T>> all_cmaps = {
                 {"grayscale", grayscale},
-                {"bgr", bgr}
+                {"bgr", bgr},
+                {"gbw", gbw}
         };
     };
 #pragma pack(push, 1)
