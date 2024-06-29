@@ -100,6 +100,15 @@ namespace diff {
         uint64_t dttr_fsize() const noexcept {
             return 28 + this->nb;
         }
+        uint64_t zmem(bool just_data = true) noexcept {
+            if (!just_data)
+                return this->mapper.zero();
+            uint64_t counter = this->nb;
+            T *ptr = this->data;
+            while (counter --> 0)
+                *ptr++ = 0;
+            return this->nb;
+        }
         uint64_t to_dttr(const char *path) {
             if (!path || !*path)
                 return 0;

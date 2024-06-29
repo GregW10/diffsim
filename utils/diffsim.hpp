@@ -22,6 +22,12 @@ namespace diff {
         invalid_dffr_format() : std::ios_base::failure{"Error: invalid .dffr file format.\n"} {}
         explicit invalid_dffr_format(const char *msg) : std::ios_base::failure{msg} {}
     };
+    class invalid_dffr_sizeT : public invalid_dffr_format {
+    public:
+        invalid_dffr_sizeT() : invalid_dffr_format{"Error: reported \"sizeof(T)\" in .dffr file does not match actual "
+                                                   "\"sizeof(T)\".\n"} {}
+        explicit invalid_dffr_sizeT(const char *msg) : invalid_dffr_format{msg} {}
+    };
     class invalid_aperture_params : public std::logic_error {
     public:
         invalid_aperture_params() : std::logic_error{"Error: invalid aperture parameters.\n"} {}
@@ -202,10 +208,10 @@ namespace diff {
         T I0; // intensity of light incident on aperture (W/m^2) - only stored to avoid recalculation
         T E0; // electric field amplitude of light incident on aperture (V/m)
         T pw; // pixel width (and height, since pixels are squares)
-        T x0 = 0.5*(pw - xdttr);
-        T y0 = 0.5*(pw - ydttr);
-        T zdsq = zdist*zdist;
-        gtd::complex<T> outside_factor = (gtd::complex<T>::m_imunit*zdist*E0)/lambda;
+        T x0;
+        T y0;
+        T zdsq;
+        gtd::complex<T> outside_factor;
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
         bool ap_ff = false; // aperture from file - used to discern whether the aperture was loaded from a file or not
     private:
@@ -275,9 +281,13 @@ namespace diff {
         xdttr{dttr_width},
         ydttr{dttr_length},
         k{(T) (2*PI/wavelength)},
-        pw{((T) dttr_width)/dttr_width_px},
         I0{incident_light_intensity},
-        E0{intensity_to_E0(incident_light_intensity)}
+        E0{intensity_to_E0(incident_light_intensity)},
+        pw{((T) dttr_width)/dttr_width_px},
+        x0{0.5*(pw - xdttr)},
+        y0{0.5*(pw - ydttr)},
+        zdsq{dttr_dist*dttr_dist},
+        outside_factor{(gtd::complex<T>::m_imunit*zdist*E0)/lambda}
         {
             if (wavelength <= 0 || aperture.ya >= aperture.yb/*||!aperture.gfunc||!aperture.hfunc*/|| dttr_dist < 0 ||
                 dttr_width < 0 || dttr_length < 0)
@@ -309,7 +319,7 @@ namespace diff {
                 t.join();
             counter.store(0);
         }
-        off_t to_dffr(std::string &path) {
+        off_t to_dffr(std::string &path) const {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
             dffr_info<T> info;
@@ -335,7 +345,7 @@ namespace diff {
                 throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
             return _end;
         }
-        uint64_t from_dffr(const char *path) {
+        uint64_t from_dffr(const char *path, bool just_info = false) {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
             struct stat buff{};
@@ -354,7 +364,7 @@ namespace diff {
             if (info.hdr[0] != 'D' || info.hdr[1] != 'F' || info.hdr[2] != 'F' || info.hdr[3] != 'R')
                 throw invalid_dffr_format{"Error: invalid .dffr file header.\n"};
             if (info.sizeT != sizeof(T))
-                throw invalid_dffr_format{"Error: reported \"sizeof(T)\" does not match actual \"sizeof(T)\".\n"};
+                throw invalid_dffr_sizeT{};
             if constexpr (std::same_as<T, long double>) {
                 if (info.mant_dig != LDBL_MANT_DIG)
                     throw invalid_dffr_format{"Error: reported \"LDBL_MANT_DIG\" does not match actual "
@@ -394,6 +404,12 @@ namespace diff {
             diffalloc<T>::np = info.nx*info.ny;
             diffalloc<T>::nb = diffalloc<T>::np*sizeof(T);
             // psize += info.nx*info.ny*sizeof(T);
+            if (just_info) {
+                diffalloc<T>::mapper.reset(diffalloc<T>::nb);
+                diffalloc<T>::data = (T*) diffalloc<T>::mapper.get();
+                diffalloc<T>::zmem();
+                goto rest;
+            }
             if (buff.st_size != psize + diffalloc<T>::nb)
                 throw invalid_dffr_format{"Error: invalid .dffr file size.\n"};
             diffalloc<T>::mapper.reset(diffalloc<T>::nb);
@@ -401,6 +417,7 @@ namespace diff {
             if (gtd::read_all(fd, diffalloc<T>::data, diffalloc<T>::nb) != this->nb)
                 throw std::ios_base::failure{"Error: could not read 2D intensity data array from .dffr file.\n"};
             // off_t _end = lseek(fd, 0, SEEK_CUR);
+            rest:
             if (close(fd) == -1)
                 throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
             diffalloc<T>::nw = info.nx;
