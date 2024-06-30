@@ -91,15 +91,16 @@ namespace diff {
     class aperture {
     protected:
         const uint32_t id;
-        T ya;
-        T yb;
+        T ya{};
+        T yb{};
         // G gfunc;
         // H hfunc;
+        explicit aperture(uint32_t ID) : id{ID} {}
     public:
         aperture(uint32_t ID, T _ya, T _yb) : id{ID}, ya{_ya}, yb{_yb} {} //, gfunc{_gfunc}, hfunc{_hfunc}{}
-        virtual void write_ap_info(int fd) const = 0;
-        virtual void read_ap_info(int fd) = 0;
-        virtual void gen_fpath(const dffr_info<T> &inf, const char *suffix, std::string *out) const = 0;
+        virtual void write_ap_info(int) const = 0;
+        virtual void read_ap_info(int, bool) = 0;
+        virtual void gen_fpath(const dffr_info<T>&, const char*, std::string*) const = 0;
         /* G gf() const noexcept {
             return this->gfunc;
         }
@@ -110,6 +111,7 @@ namespace diff {
         virtual const functor<T> &hfunc() const noexcept = 0;
         virtual T gfunc(const T&) const = 0;
         virtual T hfunc(const T&) const = 0;
+        virtual ~aperture() = default;
         friend class diffsim<T>;//, G, H>;
     };
     template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
@@ -131,7 +133,7 @@ namespace diff {
         static constexpr uint32_t rc_id = 0;
         // using aperture<T, G, H>::aperture;
         rectangle(T _xa, T _xb, T _ya, T _yb) : aperture<T>{rc_id, _ya, _yb}, xa{_xa}, xb{_xb} {}
-        explicit rectangle(int fd, bool skip_id = false) {
+        explicit rectangle(int fd, bool skip_id = false) : aperture<T>{rc_id} {
             this->read_ap_info(fd, skip_id);
         }
         const functor<T> &gfunc() const noexcept {
@@ -284,14 +286,17 @@ namespace diff {
         I0{incident_light_intensity},
         E0{intensity_to_E0(incident_light_intensity)},
         pw{((T) dttr_width)/dttr_width_px},
-        x0{0.5*(pw - xdttr)},
-        y0{0.5*(pw - ydttr)},
+        x0{(T) (0.5*(pw - xdttr))},
+        y0{(T) (0.5*(pw - ydttr))},
         zdsq{dttr_dist*dttr_dist},
         outside_factor{(gtd::complex<T>::m_imunit*zdist*E0)/lambda}
         {
             if (wavelength <= 0 || aperture.ya >= aperture.yb/*||!aperture.gfunc||!aperture.hfunc*/|| dttr_dist < 0 ||
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
+        }
+        explicit diffsim(const char *path, bool just_info = true) {
+            this->from_dffr(path, just_info);
         }
         void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
                       T reltol_y = 0.0625l/(1024.0l*1024.0l),

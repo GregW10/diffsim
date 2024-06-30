@@ -30,7 +30,7 @@ namespace diff {
         return os << "(r=" << col.r << ",g=" << col.g << ",b=" << col.b << ')';
     }
     template <typename T = long double> requires (std::is_floating_point_v<T>)
-    class colours {
+    class colours final {
     public:
         constexpr static colour<T> white    = {1.0l, 1.0l, 1.0l};
         constexpr static colour<T> black    = {0.0l, 0.0l, 0.0l};
