@@ -8,7 +8,7 @@
 
 namespace diff {
 #ifdef __CUDACC__
-    class cuda_error : public std::runtime_error {
+    class cuda_error : public std::exception {
         char *msg{};
     public:
         explicit cuda_error(int line, const char *file, const char *error_s) {
@@ -29,10 +29,10 @@ namespace diff {
         }
     };
 #define CUDA_ERROR(func_call) \
-    cudaError_t err; \
+    { cudaError_t err; \
     if ((err = func_call) != cudaSuccess) { \
         throw cuda_error{__LINE__, __FILE__, cudaGetErrorString(err)}; \
-    }
+    } }
 #endif
     struct coord {
         uint64_t x;
@@ -56,10 +56,10 @@ namespace diff {
         // bool on_gpu = false; // boolean indicating whether stored results are on the GPU
 #endif
         // bool on_cpu = false; // boolean indicating whether stored results are on the CPU
-        uint64_t pix_offset(uint64_t x, uint64_t y) { // get offset into array based on x- and y-coordinates of pixel
+        HOST_DEVICE uint64_t pix_offset(uint64_t x, uint64_t y) { // get offset into array from pixel x- and y-coords
             return y*nw + x;
         }
-        coord pix_coords(uint64_t offset) { // get x- and y-coordinates of pixel at given offset
+        HOST_DEVICE coord pix_coords(uint64_t offset) { // get x- and y-coordinates of pixel at given offset
             return {offset % nw, offset/nw};
         }
     public:

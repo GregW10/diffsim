@@ -48,7 +48,8 @@ namespace diff {
     struct dffr_info {
         char hdr[4] = {'D', 'F', 'F', 'R'};
         uint32_t sizeT = (uint32_t) sizeof(T);
-        uint32_t mant_dig = std::same_as<T, float> ? FLT_MANT_DIG : (std::same_as<T,double>?DBL_MANT_DIG:LDBL_MANT_DIG);
+        uint32_t mant_dig = std::same_as<T, float> ? FLT_MANT_DIG :
+            (std::same_as<T,double> ? DBL_MANT_DIG : LDBL_MANT_DIG);
         T lam;
         T zd;
         T w;
@@ -66,7 +67,7 @@ namespace diff {
         // inline T operator()(const T &val) const {
         //     return this->func(val);
         // }
-        virtual inline T operator()(const T&) const = 0;
+        HOST_DEVICE virtual inline T operator()(const T&) const = 0;
     };
     /* template <gtd::numeric T, gtd::callret<T> F>
     class functor<T, F, true> {
@@ -107,10 +108,10 @@ namespace diff {
         H hf() const noexcept {
             return this->hfunc;
         } */
-        virtual const functor<T> &gfunc() const noexcept = 0;
-        virtual const functor<T> &hfunc() const noexcept = 0;
-        virtual T gfunc(const T&) const = 0;
-        virtual T hfunc(const T&) const = 0;
+        HOST_DEVICE virtual const functor<T> &gfunc() const noexcept = 0;
+        HOST_DEVICE virtual const functor<T> &hfunc() const noexcept = 0;
+        HOST_DEVICE virtual T gfunc(const T&) const = 0;
+        HOST_DEVICE virtual T hfunc(const T&) const = 0;
         virtual ~aperture() = default;
         friend class diffsim<T>;//, G, H>;
     };
@@ -123,7 +124,7 @@ namespace diff {
             T val;
         public:
             explicit rc_functor(const T &v) : val{v} {}
-            inline T operator()(const T&) const {
+            HOST_DEVICE inline T operator()(const T&) const {
                 return this->val;
             }
         };
@@ -136,16 +137,16 @@ namespace diff {
         explicit rectangle(int fd, bool skip_id = false) : aperture<T>{rc_id} {
             this->read_ap_info(fd, skip_id);
         }
-        const functor<T> &gfunc() const noexcept {
+        HOST_DEVICE const functor<T> &gfunc() const noexcept {
             return this->_gfunc;
         }
-        const functor<T> &hfunc() const noexcept {
+        HOST_DEVICE const functor<T> &hfunc() const noexcept {
             return this->_hfunc;
         }
-        T gfunc(const T &val) const {
+        HOST_DEVICE T gfunc(const T &val) const {
             return this->_gfunc(val);
         }
-        T hfunc(const T &val) const {
+        HOST_DEVICE T hfunc(const T &val) const {
             return this->_hfunc(val);
         }
         consteval static uint64_t ap_info_nb() noexcept {
@@ -196,7 +197,17 @@ namespace diff {
     template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
             requires (std::is_floating_point_v<T>)
 #else
-    template <gtd::numeric T = double>//, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
+    template <gtd::numeric T>
+    __global__ void diffract_kernel(diffsim<T> *sim,
+                                    T abstol_y,
+                                    T reltol_y,
+                                    T ptol_y,
+                                    uint64_t mdepth_y,
+                                    T abstol_x,
+                                    T reltol_x,
+                                    T ptol_x,
+                                    uint64_t mdepth_x);
+    template <gtd::numeric T>//, gtd::callret<T> G = xbfunc<T>, gtd::callret<T> H = xbfunc<T>>
             requires (std::is_floating_point_v<T> && !std::same_as<T, long double>) // no long double in GPU
 #endif
     class diffsim : public diffalloc<T> {
@@ -217,11 +228,14 @@ namespace diff {
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
         bool ap_ff = false; // aperture from file - used to discern whether the aperture was loaded from a file or not
     private:
+#ifndef __CUDACC__
         std::atomic<uint64_t> counter{};
-        void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
+#endif
+        HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
             vec->x = x0 + i*pw;
             vec->y = y0 + j*pw;
         }
+#ifndef __CUDACC__
         void diffract_thread(T abstol_y,
                              T reltol_y,
                              T ptol_y,
@@ -265,6 +279,7 @@ namespace diff {
             }
             printf("100.00%% complete.\n");
         }
+#endif
     public:
         static constexpr uint64_t def_mdepth = 52;
         diffsim() = delete;
@@ -298,6 +313,7 @@ namespace diff {
         explicit diffsim(const char *path, bool just_info = true) {
             this->from_dffr(path, just_info);
         }
+#ifndef __CUDACC__
         void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
                       T reltol_y = 0.0625l/(1024.0l*1024.0l),
                       T ptol_y = 1/(1024.0l*1024.0l*1024.0l),
@@ -316,14 +332,97 @@ namespace diff {
             while (_i --> 0)
                 threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
                                      abstol_x, reltol_x, ptol_x, mdepth_x);
-            if (ptime) {
+            if (ptime)
                 std::thread{&diffsim<T>::prog_thread, this, ptime}.join();
-                // progt.join();
-            }
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);
         }
+#else
+        void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
+                      T reltol_y = 0.0625l/(1024.0l*1024.0l),
+                      T ptol_y = 1/(1024.0l*1024.0l*1024.0l),
+                      uint64_t mdepth_y = def_mdepth,
+                      T abstol_x = 0.0625l/(1024.0l*1024.0l),
+                      T reltol_x = 0.0625l/(1024.0l*1024.0l),
+                      T ptol_x = 1/(1024.0l*1024.0l*1024.0l),
+                      uint64_t mdepth_x = def_mdepth,
+                      dim3 *block_out = nullptr,
+                      dim3 *grid_out = nullptr) {
+            int device;
+            CUDA_ERROR(cudaGetDevice(&device));
+            cudaDeviceProp props;
+            CUDA_ERROR(cudaGetDeviceProperties(&props, device));
+            dim3 block; // CUDA initialises all elements to 1 by default
+            dim3 grid;
+            if (diffalloc<T>::np < props.maxThreadsPerBlock)
+                props.maxThreadsPerBlock = diffalloc<T>::np; // unconventional, I know
+            if (props.maxThreadsPerBlock <= props.maxThreadsDim[0])
+                block.x = props.maxThreadsPerBlock;
+            else if (props.maxThreadsPerBlock <= props.maxThreadsDim[1])
+                block.y = props.maxThreadsPerBlock;
+            else if (props.maxThreadsPerBlock <= props.maxThreadsDim[2])
+                block.z = props.maxThreadsPerBlock;
+            else {
+                block.x = props.maxThreadsDim[0];
+                uint64_t txty;
+                if ((txty = props.maxThreadsDim[0]*props.maxThreadsDim[1]) >= props.maxThreadsPerBlock) {
+                    block.y = props.maxThreadsPerBlock/block.x;
+                } else {
+                    block.y = props.maxThreadsDim[1];
+                    uint64_t txtytz;
+                    if ((txtytz = txty*props.maxThreadsDim[2]) >= props.maxThreadsPerBlock) {
+                        block.z = props.maxThreadsPerBlock/txty;
+                    } else {
+                        block.z = props.maxThreadsDim[2];
+                    }
+                }
+            }
+            uint64_t block_size = block.x*block.y*block.z;
+            uint64_t num_blocks = diffalloc<T>::np % block_size ? diffalloc<T>::np/block_size + 1 :
+                    diffalloc<T>::np/block_size;
+            if (num_blocks <= props.maxGridSize[0])
+                grid.x = num_blocks;
+            else if (num_blocks <= props.maxGridSize[1])
+                grid.y = num_blocks;
+            else if (num_blocks <= props.maxGridSize[2])
+                grid.z = num_blocks;
+            else {
+                grid.x = props.maxGridSize[0];
+                uint64_t gxgy;
+                if ((gxgy = props.maxGridSize[0]*props.maxGridSize[1]) >= num_blocks) {
+                    grid.y = num_blocks/grid.x;
+                } else {
+                    grid.y = props.maxGridSize[1];
+                    uint64_t gxgygz;
+                    if ((gxgygz = gxgy*props.maxGridSize[2]) >= num_blocks) {
+                        grid.z = num_blocks/gxgy;
+                    } else {
+                        grid.z = props.maxGridSize[2];
+                    }
+                }
+            }
+            if (block_out)
+                *block_out = block;
+            if (grid_out)
+                *grid_out = grid;
+            diffsim<T> *sim_cpy;
+            CUDA_ERROR(cudaMalloc(&sim_cpy, sizeof(diffsim<T>)));
+            CUDA_ERROR(cudaMemcpy(sim_cpy, this, sizeof(diffsim<T>), cudaMemcpyHostToDevice))
+            diffract_kernel<<<grid,block>>>(this,
+                                            abstol_y,
+                                            reltol_y,
+                                            ptol_y,
+                                            mdepth_y,
+                                            abstol_x,
+                                            reltol_x,
+                                            ptol_x,
+                                            mdepth_x);
+            CUDA_ERROR(cudaDeviceSynchronize());
+            CUDA_ERROR(cudaFree(sim_cpy));
+            CUDA_ERROR(cudaMemcpy(this->data, this->gdat, diffalloc<T>::nb, cudaMemcpyDeviceToHost));
+        }
+#endif
         off_t to_dffr(std::string &path) const {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
@@ -446,6 +545,55 @@ namespace diff {
                 delete this->ap;
             ap_ff = false; // overkill
         }
+#ifdef __CUDACC__
+        // template <gtd::numeric T>
+        friend __global__ void diffract_kernel(diffsim<T> *sim,
+                                               T abstol_y,
+                                               T reltol_y,
+                                               T ptol_y,
+                                               uint64_t mdepth_y,
+                                               T abstol_x,
+                                               T reltol_x,
+                                               T ptol_x,
+                                               uint64_t mdepth_x);
+#endif
     };
+#ifdef __CUDACC__
+    template <gtd::numeric T>
+    __global__ void diffract_kernel(diffsim<T> *sim,
+                                    T abstol_y,
+                                    T reltol_y,
+                                    T ptol_y,
+                                    uint64_t mdepth_y,
+                                    T abstol_x,
+                                    T reltol_x,
+                                    T ptol_x,
+                                    uint64_t mdepth_x) {
+        uint64_t b_id = blockIdx.x + blockIdx.y*gridDim.x + blockIdx.z*gridDim.x*gridDim.y;
+        uint64_t t_id = threadIdx.x + threadIdx.y*blockDim.x + threadIdx.z*blockDim.x*blockDim.y;
+        uint64_t offset = b_id*(blockDim.x*blockDim.y*blockDim.z) + t_id;
+        if (offset >= sim->np)
+            return;
+        coord c;
+        vector<T> pos;
+        pos.z = sim->zdist; // is constant
+        auto integrand = [&pos, sim](const T &ap_x, const T &ap_y){
+            T xdiff = ap_x - pos.x;
+            T ydiff = ap_y - pos.y;
+            T rsq = xdiff*xdiff + ydiff*ydiff + sim->zdsq;
+            T kr = sim->k*std::sqrt(rsq);
+            return ((std::cos(kr) + gtd::complex<T>::imunit*std::sin(kr))/
+                   (rsq))*(1 + gtd::complex<T>::imunit/kr); // eliminate sine
+        };
+        c = sim->pix_coords(offset); // I will find a more optimised way of doing this
+        sim->pix_to_pos(&pos, c.x, c.y);
+        *(sim->gdat + offset) =
+                E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
+                        decltype(sim->ap->gfunc()), decltype(sim->ap->hfunc())>
+                                 (integrand, sim->ap->ya, sim->ap->yb, sim->ap->gfunc(), sim->ap->hfunc(),
+                                  abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                  &mdepth_x)*sim->outside_factor); // get intensity
+    }
+#endif
 }
 #endif

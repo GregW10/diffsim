@@ -48,8 +48,10 @@ struct sim_vals {
     T reltol_x;
     T ptol_x;
     T mdepth_x;
+#ifndef __CUDACC__
     uint64_t threads;
     uint64_t ptime;
+#endif
     std::string dffr_path{};
     std::string bmp_path{};
 };
@@ -148,8 +150,10 @@ int start_sim(gtd::parser &parser) {
     vals.ptol_x   = parser.get_arg("--ptol_x", (T) DEF_PTX);
     vals.mdepth_y = parser.get_arg("--mdepth_y", DEF_MDY);
     vals.mdepth_x = parser.get_arg("--mdepth_x", DEF_MDX);
+#ifndef __CUDACC__
     vals.threads = parser.get_arg("--threads", (uint64_t) 0);
     vals.ptime = parser.get_arg("--ptime", (uint64_t) 1);
+#endif
     const char *dffr_path = parser.get_arg("--dffr");
     bool no_dffr = parser.get_arg("--no_dffr", false);
     const char *bmp_path = parser.get_arg("--bmp");
@@ -178,7 +182,9 @@ int start_sim(gtd::parser &parser) {
         else
             printf("Floating-point type: \"float\"\n");
     }
+#ifndef __CUDACC__
     vals.threads = vals.threads ? vals.threads : std::thread::hardware_concurrency();
+#endif
     if constexpr (verbose)
         std::cout << "Starting simulation with the following parameters:"
                      "\n\tAperture lower x-limit = " << vals.xa       << " m"
@@ -199,11 +205,16 @@ int start_sim(gtd::parser &parser) {
                      "\n\tRelative x-tolerance   = " << vals.reltol_x <<
                      "\n\tPeriodic x-tolerance   = " << vals.ptol_x   <<
                      "\n\tMax. y-recursion-depth = " << vals.mdepth_y <<
-                     "\n\tMax. x-recursion-depth = " << vals.mdepth_x <<
-                     "\n\tNumber of threads      = " << vals.threads  <<
-                     "\n\tProgress time delay    = " << vals.ptime    << " s\n";
+                     "\n\tMax. x-recursion-depth = " << vals.mdepth_x
+#ifdef __CUDACC__
+                     << '\n';
+#else
+                     << "\n\tNumber of threads      = " << vals.threads  <<
+                     "\n\tProgress time delay    = " << vals.ptime << " s\n";
+#endif
     diff::rectangle<T> ap{vals.xa, vals.xb, vals.ya, vals.yb};
     diff::diffimg<T> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
+#ifndef __CUDACC__
     sim.diffract(vals.abstol_y,
                  vals.reltol_y,
                  vals.ptol_y,
@@ -214,6 +225,24 @@ int start_sim(gtd::parser &parser) {
                  vals.mdepth_x,
                  vals.threads,
                  vals.ptime);
+#else
+    dim3 block;
+    dim3 grid;
+    sim.diffract(vals.abstol_y,
+                 vals.reltol_y,
+                 vals.ptol_y,
+                 vals.mdepth_y,
+                 vals.abstol_x,
+                 vals.reltol_x,
+                 vals.ptol_x,
+                 vals.mdepth_x,
+                 &block,
+                 &grid);
+    printf("CUDA kernel block:");
+    gtd::print_array(&block, 3);
+    printf("CUDA kernel grid:");
+    gtd::print_array(&grid, 3);
+#endif
     if (!no_dffr) {
         if constexpr (verbose)
             printf("Simulation completed, generating DFFR...\n");
@@ -245,23 +274,23 @@ int main(int argc, char **argv) {
     const char *flt_type = parser.get_arg("-f");
     bool verbose = parser.get_arg("-v", false);
     if (verbose) {
+#ifndef __CUDACC__
         if (!flt_type || gtd::str_eq(flt_type, "Lf"))
             return start_sim<long double, true>(parser);
+#endif
         if (gtd::str_eq(flt_type, "lf"))
             return start_sim<double, true>(parser);
-#ifndef __CUDACC__
         if (gtd::str_eq(flt_type, "f"))
             return start_sim<float, true>(parser);
-#endif
     } else {
+#ifndef __CUDACC__
         if (!flt_type || gtd::str_eq(flt_type, "Lf"))
             return start_sim<long double, false>(parser);
+#endif
         if (gtd::str_eq(flt_type, "lf"))
             return start_sim<double, false>(parser);
-#ifndef __CUDACC__
         if (gtd::str_eq(flt_type, "f"))
             return start_sim<float, false>(parser);
-#endif
     }
     fprintf(stderr, "Error: invalid argument for \"-f\" flag, \"%s\".\n", flt_type);
     return 1;
