@@ -90,16 +90,19 @@ namespace diff {
             return num;
         }
     }; */
+    template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
+    class aperture;
 #ifdef __CUDACC__
-    template <gtd::numeric T, gtd::callret<T> F>
+    template <gtd::numeric T>//, gtd::callret<T> F>
     __global__ void diffract_kernel(uint64_t _nw,
                                     uint64_t _nh,
                                     uint64_t _np,
                                     uint64_t _nb,
                                     T *_gdat,
                                     T _lambda,
-                                    T _ap_ya,
-                                    T _ap_yb,
+                                    const aperture<T> *_ap,
+                                    // T _ap_ya,
+                                    // T _ap_yb,
                                     T _zdist,
                                     T _xdttr,
                                     T _ydttr,
@@ -111,8 +114,8 @@ namespace diff {
                                     T _y0,
                                     T _zdsq,
                                     gtd::complex<T> _outside_factor,
-                                    F _gfunc,
-                                    F _hfunc,
+                                    // F _gfunc,
+                                    // F _hfunc,
                                     T abstol_y,
                                     T reltol_y,
                                     T ptol_y,
@@ -154,16 +157,37 @@ namespace diff {
         virtual ~aperture() = default;
         friend class diffsim<T>;//, G, H>;
 #ifdef __CUDACC__
-        template <gtd::numeric U>
-        friend __global__ void diffract_kernel(diffsim<U> *sim,
-                                        U abstol_y,
-                                        U reltol_y,
-                                        U ptol_y,
-                                        uint64_t mdepth_y,
-                                        U abstol_x,
-                                        U reltol_x,
-                                        U ptol_x,
-                                        uint64_t mdepth_x);
+        template <gtd::numeric U>//, gtd::callret<U> F>
+        friend __global__ void diffract_kernel(uint64_t _nw,
+                                               uint64_t _nh,
+                                               uint64_t _np,
+                                               uint64_t _nb,
+                                               U *_gdat,
+                                               U _lambda,
+                                               const aperture<U> *_ap,
+                                               // U _ap_ya,
+                                               // U _ap_yb,
+                                               U _zdist,
+                                               U _xdttr,
+                                               U _ydttr,
+                                               U _k,
+                                               U _I0,
+                                               U _E0,
+                                               U _pw,
+                                               U _x0,
+                                               U _y0,
+                                               U _zdsq,
+                                               gtd::complex<U> _outside_factor,
+                                               // F _gfunc,
+                                               // F _hfunc,
+                                               U abstol_y,
+                                               U reltol_y,
+                                               U ptol_y,
+                                               uint64_t mdepth_y,
+                                               U abstol_x,
+                                               U reltol_x,
+                                               U ptol_x,
+                                               uint64_t mdepth_x);
 #endif
     };
     template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
@@ -267,6 +291,9 @@ namespace diff {
     protected:
         T lambda; // wavelength of light (m)
         const aperture<T> *ap; // aperture (slit)
+#ifdef __CUDACC__
+        const aperture<T> *ap_gpu; // aperture (slit)
+#endif
         T zdist; // distance along z-axis to detector (m)
         T xdttr; // width of detector (along x) (m)
         T ydttr; // length of detector (along y) (m)
@@ -337,7 +364,10 @@ namespace diff {
         static constexpr uint64_t def_mdepth = 52;
         diffsim() = delete;
         diffsim(const T &wavelength,
-                const aperture<T> &aperture,
+                const aperture<T> *_aperture,
+#ifdef __CUDACC__
+                const aperture<T> *_aperture_gpu,
+#endif
                 const T &dttr_dist,
                 const T &dttr_width,
                 const T &dttr_length,
@@ -346,7 +376,10 @@ namespace diff {
                 uint64_t dttr_length_px = 2'000) :
         diffalloc<T>{dttr_width_px, dttr_length_px},
         lambda{wavelength},
-        ap{&aperture},
+        ap{_aperture},
+#ifdef __CUDACC__
+        ap_gpu{_aperture_gpu},
+#endif
         zdist{dttr_dist},
         xdttr{dttr_width},
         ydttr{dttr_length},
@@ -359,7 +392,13 @@ namespace diff {
         zdsq{dttr_dist*dttr_dist},
         outside_factor{(gtd::complex<T>::m_imunit*zdist*E0)/lambda}
         {
-            if (wavelength <= 0 || aperture.ya >= aperture.yb/*||!aperture.gfunc||!aperture.hfunc*/|| dttr_dist < 0 ||
+            if (!_aperture
+#ifdef __CUDACC__
+            || !_aperture_gpu
+#endif
+            )
+                throw std::invalid_argument{"Error: nullptr cannot be passed for aperture pointer.\n"};
+            if (wavelength <= 0 || _aperture->ya >= _aperture->yb || dttr_dist < 0 ||
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
@@ -486,15 +525,16 @@ namespace diff {
             CUDA_ERROR(cudaFree((void*) sim_cpy_cpu_ptr->ap));
             CUDA_ERROR(cudaFree(sim_cpy_gpu_ptr));
             CUDA_ERROR(cudaMemcpy(this->data, this->gdat, diffalloc<T>::nb, cudaMemcpyDeviceToHost)); */
-            diffract_kernel<T, decltype(this->ap->gfunc())>
+            diffract_kernel<T>//, decltype(this->ap->gfunc())>
                            <<<grid,block>>>(diffalloc<T>::nw,
                                             diffalloc<T>::nh,
                                             diffalloc<T>::np,
                                             diffalloc<T>::nb,
                                             diffalloc<T>::gdat,
                                             this->lambda,
-                                            this->ap->ya,
-                                            this->ap->yb,
+                                            this->ap_gpu,
+                                            // this->ap->ya,
+                                            // this->ap->yb,
                                             this->zdist,
                                             this->xdttr,
                                             this->ydttr,
@@ -506,8 +546,8 @@ namespace diff {
                                             this->y0,
                                             this->zdsq,
                                             this->outside_factor,
-                                            this->ap->gfunc(),
-                                            this->ap->hfunc(),
+                                            // this->ap->gfunc(),
+                                            // this->ap->hfunc(),
                                             abstol_y,
                                             reltol_y,
                                             ptol_y,
@@ -644,15 +684,16 @@ namespace diff {
             ap_ff = false; // overkill
         }
 #ifdef __CUDACC__
-        template <gtd::numeric U, gtd::callret<U> F>
+        template <gtd::numeric U>//, gtd::callret<U> F>
         friend __global__ void diffract_kernel(uint64_t _nw,
                                                uint64_t _nh,
                                                uint64_t _np,
                                                uint64_t _nb,
                                                U *_gdat,
                                                U _lambda,
-                                               U _ap_ya,
-                                               U _ap_yb,
+                                               const aperture<U> *_ap,
+                                               // U _ap_ya,
+                                               // U _ap_yb,
                                                U _zdist,
                                                U _xdttr,
                                                U _ydttr,
@@ -663,9 +704,9 @@ namespace diff {
                                                U _x0,
                                                U _y0,
                                                U _zdsq,
-                                               gtd::complex<T> _outside_factor,
-                                               F _gfunc,
-                                               F _hfunc,
+                                               gtd::complex<U> _outside_factor,
+                                               // F _gfunc,
+                                               // F _hfunc,
                                                U abstol_y,
                                                U reltol_y,
                                                U ptol_y,
@@ -677,15 +718,16 @@ namespace diff {
 #endif
     };
 #ifdef __CUDACC__
-    template <gtd::numeric T, gtd::callret<T> F>
+    template <gtd::numeric T>//, gtd::callret<T> F>
     __global__ void diffract_kernel(uint64_t _nw,
                                     uint64_t _nh,
                                     uint64_t _np,
                                     uint64_t _nb,
                                     T *_gdat,
                                     T _lambda,
-                                    T _ap_ya,
-                                    T _ap_yb,
+                                    const aperture<T> *_ap,
+                                    // T _ap_ya,
+                                    // T _ap_yb,
                                     T _zdist,
                                     T _xdttr,
                                     T _ydttr,
@@ -697,8 +739,8 @@ namespace diff {
                                     T _y0,
                                     T _zdsq,
                                     gtd::complex<T> _outside_factor,
-                                    F _gfunc,
-                                    F _hfunc,
+                                    // F _gfunc,
+                                    // F _hfunc,
                                     T abstol_y,
                                     T reltol_y,
                                     T ptol_y,
@@ -730,23 +772,25 @@ namespace diff {
         // sim->pix_to_pos(&pos, c.x, c.y);
         pos.x = _x0 + c.x*_pw;
         pos.y = _y0 + c.y*_pw;
-        F g = _gfunc;
-        F h = _hfunc;
-        printf("Justo antes.\n");
-        auto _g = [](const T&){return -0.00001;};
-        auto _h = [](const T&){return  0.00001;};
-        *(_gdat + offset) =
+        // F g = _gfunc;
+        // F h = _hfunc;
+        // F g{(T) -0.00001};
+        // F h{(T)  0.00001};
+        // printf("Justo antes.\n");
+        // auto _g = [](const T&){return (T) -0.00001;};
+        // auto _h = [](const T&){return (T)  0.00001;};
+        /* *(_gdat + offset) =
                 E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
-                        decltype(_g), decltype(_h)>
-                                 (integrand, _ap_ya, _ap_yb, _g, _h,
-                                  abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
-                                  &mdepth_x)*_outside_factor); /*
-        *(_gdat + offset) =
-                E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
-                        decltype(_gfunc), decltype(_hfunc)>
-                                 (integrand, _ap_ya, _ap_yb, _gfunc, _hfunc,
+                        decltype(g), decltype(h)>
+                                 (integrand, _ap_ya, _ap_yb, g, h,
                                   abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                   &mdepth_x)*_outside_factor); */
+        *(_gdat + offset) =
+                E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
+                        decltype(_ap->gfunc()), decltype(_ap->hfunc())>
+                                 (integrand, _ap->ya, _ap->yb, _ap->gfunc(), _ap->hfunc(),
+                                  abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                  &mdepth_x)*_outside_factor);
         __syncthreads();
         printf("Completado\n");
         // cudaFree(ap);

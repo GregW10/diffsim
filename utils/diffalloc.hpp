@@ -32,7 +32,7 @@ namespace diff {
     { cudaError_t err; \
     if ((err = func_call) != cudaSuccess) { \
         fprintf(stderr, "Error: %s\n", cudaGetErrorString(err)); \
-        throw cuda_error{__LINE__, __FILE__, cudaGetErrorString(err)}; \
+        throw diff::cuda_error{__LINE__, __FILE__, cudaGetErrorString(err)}; \
     } }
 #endif
     struct coord {

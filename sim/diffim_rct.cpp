@@ -213,8 +213,8 @@ int start_sim(gtd::parser &parser) {
                      "\n\tProgress time delay    = " << vals.ptime << " s\n";
 #endif
     diff::rectangle<T> ap{vals.xa, vals.xb, vals.ya, vals.yb};
-    diff::diffimg<T> sim{vals.lam, ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
 #ifndef __CUDACC__
+    diff::diffimg<T> sim{vals.lam, &ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     sim.diffract(vals.abstol_y,
                  vals.reltol_y,
                  vals.ptol_y,
@@ -226,6 +226,10 @@ int start_sim(gtd::parser &parser) {
                  vals.threads,
                  vals.ptime);
 #else
+    diff::rectangle<T> *ap_gpu;
+    CUDA_ERROR(cudaMalloc(&ap_gpu, sizeof(diff::rectangle<T>)));
+    new(ap_gpu) diff::rectangle<T>{vals.xa, vals.xb, vals.ya, vals.yb}; // no, must initialise on GPU
+    diff::diffimg<T> sim{vals.lam, &ap, ap_gpu, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     dim3 block;
     dim3 grid;
     sim.diffract(vals.abstol_y,
@@ -266,6 +270,9 @@ int start_sim(gtd::parser &parser) {
             printf("BMP written to \"%s\" with a size of %llu bytes.\n",
                    vals.bmp_path.c_str(), (unsigned long long) bmp_size);
     }
+#ifdef __CUDACC__
+    CUDA_ERROR(cudaFree(ap_gpu));
+#endif
     return 0;
 }
 
