@@ -239,9 +239,9 @@ int start_sim(gtd::parser &parser) {
                  &block,
                  &grid);
     printf("CUDA kernel block:");
-    gtd::print_array(&block, 3);
+    gtd::print_array<unsigned int>((unsigned int*) &block, 3);
     printf("CUDA kernel grid:");
-    gtd::print_array(&grid, 3);
+    gtd::print_array<unsigned int>((unsigned int*) &grid, 3);
 #endif
     if (!no_dffr) {
         if constexpr (verbose)
@@ -274,23 +274,23 @@ int main(int argc, char **argv) {
     const char *flt_type = parser.get_arg("-f");
     bool verbose = parser.get_arg("-v", false);
     if (verbose) {
-#ifndef __CUDACC__
-        if (!flt_type || gtd::str_eq(flt_type, "Lf"))
-            return start_sim<long double, true>(parser);
-#endif
-        if (gtd::str_eq(flt_type, "lf"))
+        if (!flt_type || gtd::str_eq(flt_type, "lf"))
             return start_sim<double, true>(parser);
         if (gtd::str_eq(flt_type, "f"))
             return start_sim<float, true>(parser);
-    } else {
 #ifndef __CUDACC__
-        if (!flt_type || gtd::str_eq(flt_type, "Lf"))
-            return start_sim<long double, false>(parser);
+        if (gtd::str_eq(flt_type, "Lf"))
+            return start_sim<long double, true>(parser);
 #endif
-        if (gtd::str_eq(flt_type, "lf"))
+    } else {
+        if (!flt_type || gtd::str_eq(flt_type, "lf"))
             return start_sim<double, false>(parser);
         if (gtd::str_eq(flt_type, "f"))
             return start_sim<float, false>(parser);
+#ifndef __CUDACC__
+        if (gtd::str_eq(flt_type, "Lf"))
+            return start_sim<long double, false>(parser);
+#endif
     }
     fprintf(stderr, "Error: invalid argument for \"-f\" flag, \"%s\".\n", flt_type);
     return 1;

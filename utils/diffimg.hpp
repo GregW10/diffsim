@@ -227,11 +227,7 @@ namespace diff {
                                                 {1.0l, colours<T>::white}};
         static inline const colourmap<T> gp  = {{0.0l, colours<T>::green},
                                                 {1.0l, colours<T>::pink}};
-        static inline const std::map<std::string, colourmap<T>> all_cmaps = {
-                {"grayscale", grayscale},
-                {"bgr", bgr},
-                {"gbw", gbw}
-        };
+        static const std::map<std::string, colourmap<T>> all_cmaps;
     };
 #pragma pack(push, 1)
     struct bmp_header {
@@ -386,5 +382,14 @@ namespace diff {
             return pos;
         }
     };
-}
+} /*
+template class diff::cmaps<float>;
+template class diff::cmaps<double>;
+template class diff::cmaps<long double>; */
+template <typename T> requires (std::is_floating_point_v<T>)
+inline const std::map<std::string, diff::colourmap<T>> diff::cmaps<T>::all_cmaps = {
+        {"grayscale", diff::cmaps<T>::grayscale},
+        {"bgr", diff::cmaps<T>::bgr},
+        {"gbw", diff::cmaps<T>::gbw}
+};
 #endif

@@ -323,8 +323,24 @@ namespace diff {
                            T ptol,
                            uint64_t *mdepth) {
         if (b < a || abstol <= 0 || reltol < 0 || reltol >= 1)
+#ifndef __CUDACC__
             throw std::invalid_argument{"Error: upper x-bound must be above lower x-bound, x-tolerance must be "
                                         "positive and x-relative-tolerance must be in [0,1).\n"};
+#else
+        { if constexpr (std::same_as<R, long double>)
+                return -HUGE_VALL;
+            if constexpr (std::same_as<R, double>)
+                return -HUGE_VAL;
+            if constexpr (std::same_as<R, float>)
+                return -HUGE_VALF;
+            if constexpr (std::same_as<R, gtd::complex<long double>>)
+                return {-HUGE_VALL, -HUGE_VALL};
+            if constexpr (std::same_as<R, gtd::complex<double>>)
+                return {-HUGE_VAL, -HUGE_VAL};
+            if constexpr (std::same_as<R, gtd::complex<float>>)
+                return {-HUGE_VALF, -HUGE_VALF};
+            return 0; }
+#endif
         if (a == b) {// zero width = zero area, so might as well save some computation below
             if (mdepth)
                 *mdepth = 0;
@@ -585,8 +601,24 @@ namespace diff {
                               T ptol_x,
                               uint64_t *mdepth_x) {
         if (yb <= ya || abstol_y <= 0 || reltol_y < 0 || reltol_y >= 1)
+#ifndef __CUDACC__
             throw std::invalid_argument{"Error: upper y-bound must be above lower y-bound, y-tolerance must be "
                                         "positive and y-relative-tolerance must be in [0,1).\n"};
+#else
+        { if constexpr (std::same_as<R, long double>)
+                return -HUGE_VALL;
+            if constexpr (std::same_as<R, double>)
+                return -HUGE_VAL;
+            if constexpr (std::same_as<R, float>)
+                return -HUGE_VALF;
+            if constexpr (std::same_as<R, gtd::complex<long double>>)
+                return {-HUGE_VALL, -HUGE_VALL};
+            if constexpr (std::same_as<R, gtd::complex<double>>)
+                return {-HUGE_VAL, -HUGE_VAL};
+            if constexpr (std::same_as<R, gtd::complex<float>>)
+                return {-HUGE_VALF, -HUGE_VALF};
+            return 0; }
+#endif
         if (ya == yb) // zero width = zero area, so might as well save some computation below
             return 0;
         struct fym3fyb_val {

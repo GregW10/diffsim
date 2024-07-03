@@ -31,6 +31,7 @@ namespace diff {
 #define CUDA_ERROR(func_call) \
     { cudaError_t err; \
     if ((err = func_call) != cudaSuccess) { \
+        fprintf(stderr, "Error: %s\n", cudaGetErrorString(err)); \
         throw cuda_error{__LINE__, __FILE__, cudaGetErrorString(err)}; \
     } }
 #endif
