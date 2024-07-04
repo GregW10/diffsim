@@ -56,6 +56,13 @@ struct sim_vals {
     std::string bmp_path{};
 };
 
+#ifdef __CUDACC__
+template <typename T> requires (std::is_floating_point_v<T>)
+__global__ void init_rect(diff::rectangle<T> *rect, T _xa, T _xb, T _ya, T _yb) {
+    new(rect) diff::rectangle<T>{_xa, _xb, _ya, _yb};
+}
+#endif
+
 template <typename T, bool verbose> requires (std::is_floating_point_v<T>)
 int start_sim(gtd::parser &parser) {
     sim_vals<T> vals;
@@ -228,7 +235,8 @@ int start_sim(gtd::parser &parser) {
 #else
     diff::rectangle<T> *ap_gpu;
     CUDA_ERROR(cudaMalloc(&ap_gpu, sizeof(diff::rectangle<T>)));
-    new(ap_gpu) diff::rectangle<T>{vals.xa, vals.xb, vals.ya, vals.yb}; // no, must initialise on GPU
+    init_rect<<<1,1>>>(ap_gpu, vals.xa, vals.xb, vals.ya, vals.yb);
+    CUDA_ERROR(cudaDeviceSynchronize());
     diff::diffimg<T> sim{vals.lam, &ap, ap_gpu, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     dim3 block;
     dim3 grid;
@@ -242,10 +250,10 @@ int start_sim(gtd::parser &parser) {
                  vals.mdepth_x,
                  &block,
                  &grid);
-    printf("CUDA kernel block:");
-    gtd::print_array<unsigned int>((unsigned int*) &block, 3);
-    printf("CUDA kernel grid:");
-    gtd::print_array<unsigned int>((unsigned int*) &grid, 3);
+    // printf("CUDA kernel block:");
+    // gtd::print_array<unsigned int>((unsigned int*) &block, 3);
+    // printf("CUDA kernel grid:");
+    // gtd::print_array<unsigned int>((unsigned int*) &grid, 3);
 #endif
     if (!no_dffr) {
         if constexpr (verbose)

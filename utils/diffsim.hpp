@@ -441,12 +441,14 @@ namespace diff {
                       uint64_t mdepth_x = def_mdepth,
                       dim3 *block_out = nullptr,
                       dim3 *grid_out = nullptr) {
-            printf("Does this even get called?\n");
             int device;
             CUDA_ERROR(cudaGetDevice(&device));
             cudaDeviceProp props;
             CUDA_ERROR(cudaGetDeviceProperties(&props, device));
-            printf("After get props.\n");
+            int b_size;
+            int g_size;
+            CUDA_ERROR(cudaOccupancyMaxPotentialBlockSize(&g_size, &b_size, diffract_kernel<T>));
+            props.maxThreadsPerBlock = b_size < props.maxThreadsPerBlock ? b_size : props.maxThreadsPerBlock;
             dim3 block; // CUDA initialises all elements to 1 by default
             dim3 grid;
             if (diffalloc<T>::np < props.maxThreadsPerBlock)
@@ -525,6 +527,12 @@ namespace diff {
             CUDA_ERROR(cudaFree((void*) sim_cpy_cpu_ptr->ap));
             CUDA_ERROR(cudaFree(sim_cpy_gpu_ptr));
             CUDA_ERROR(cudaMemcpy(this->data, this->gdat, diffalloc<T>::nb, cudaMemcpyDeviceToHost)); */
+            // printf("Antes del kernel.\n");
+            // sleep(10);
+            // block.x = 16;
+            // block.y = 16;
+            // grid.x = 64;
+            // printf("Max block size: %d, max grid size: %d\n", b_size, g_size);
             diffract_kernel<T>//, decltype(this->ap->gfunc())>
                            <<<grid,block>>>(diffalloc<T>::nw,
                                             diffalloc<T>::nh,
@@ -556,6 +564,7 @@ namespace diff {
                                             reltol_x,
                                             ptol_x,
                                             mdepth_x);
+            CUDA_ERROR(cudaGetLastError());
             CUDA_ERROR(cudaDeviceSynchronize());
             CUDA_ERROR(cudaMemcpy(this->data, this->gdat, this->nb, cudaMemcpyDeviceToHost));
             CUDA_ERROR(cudaDeviceSynchronize());
@@ -749,13 +758,15 @@ namespace diff {
                                     T reltol_x,
                                     T ptol_x,
                                     uint64_t mdepth_x) {
+        // printf("Comienzo del kernel.\n");
+        // __syncthreads();
         uint64_t b_id = blockIdx.x + blockIdx.y*gridDim.x + blockIdx.z*gridDim.x*gridDim.y;
         uint64_t t_id = threadIdx.x + threadIdx.y*blockDim.x + threadIdx.z*blockDim.x*blockDim.y;
         uint64_t offset = b_id*(blockDim.x*blockDim.y*blockDim.z) + t_id;
+        // printf("Offset: %" PRIu64 "\n", offset);
+        // __syncthreads();
         if (offset >= _np)
             return;
-        printf("Offset: %" PRIu64 "\n", offset);
-        __syncthreads();
         vector<T> pos;
         pos.z = _zdist; // is constant
         auto integrand = [&pos, &_zdsq, &_k](const T &ap_x, const T &ap_y){
@@ -785,14 +796,16 @@ namespace diff {
                                  (integrand, _ap_ya, _ap_yb, g, h,
                                   abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                   &mdepth_x)*_outside_factor); */
+        // printf("Antes\n");
+        // __syncthreads();
         *(_gdat + offset) =
                 E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
                         decltype(_ap->gfunc()), decltype(_ap->hfunc())>
                                  (integrand, _ap->ya, _ap->yb, _ap->gfunc(), _ap->hfunc(),
                                   abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                   &mdepth_x)*_outside_factor);
-        __syncthreads();
-        printf("Completado\n");
+        // __syncthreads();
+        // printf("Completado\n");
         // cudaFree(ap);
     }
 #endif
