@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     Functor functor;
     DBL abstol = (1/65536.0l);///16384.0l;///65536.0l;
     DBL reltol = 0.0000001l;
-    DBL ptol = 1/(1024.0l*1024.0l*1024.0l*1024.0l);
+    DBL ptol = 1/(1024.0l*1024.0l);
     std::cout << "Integration range: [" << a << ',' << b << "]\n\n";
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
     DBL trap = diff::integrate_trap(functor, a, b, num);

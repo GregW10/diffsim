@@ -272,7 +272,9 @@ namespace diff {
             oss << "diffpat_lam" << inf.lam << "m_xa" << this->xa << "m_xb" << this->xb << "m_ya"
                 << this->ya << "m_yb" << this->yb << "m_zd" << inf.zd << "m_xdl" << inf.w << "m_ydl" << inf.l << "m_E0"
                 << inf.I_0 << "Wpm2" << (suffix ? suffix : "");
-            *out = oss.rdbuf()->view().data();
+            // *out = oss.rdbuf()->view().data();
+            const char *_dat = oss.rdbuf()->view().data();
+            out->assign(_dat, _dat + oss.tellp());
         }
         friend class diffsim<T>;
     };

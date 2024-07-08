@@ -505,13 +505,30 @@ namespace diff {
             } \
         }
         if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
+            if constexpr (std::same_as<R, gtd::complex<T>>) {
+                gtd::point<T, 3> points[5] = {{a,   fa._real,  fa._imag},
+                                              {m1, fm1._real, fm1._imag},
+                                              {m2, fm2._real, fm2._imag},
+                                              {m3, fm3._real, fm3._imag},
+                                              {b,   fb._real,  fb._imag}};
+                ptol *= gtd::max_dist<T, 3>(points, 5);
+                /* std::cout << "max. dist: " << gtd::max_dist<T, 3>(points, 5) << std::endl; */
+            } else {
+                gtd::point<T, 2> points[5] = {{a,   fa},
+                                              {m1, fm1},
+                                              {m2, fm2},
+                                              {m3, fm3},
+                                              {b,   fb}};
+                ptol *= gtd::max_dist<T, 2>(points, 5);
+                /* std::cout << "max. dist: " << gtd::max_dist<T, 2>(points, 5) << std::endl; */
+            }
             const T org_ptol = ptol;
             if (mdepth) {
                 // uint64_t _s;
                 if (*mdepth == NO_MAX_DEPTH) {
                     uint64_t reach = (uint64_t) -1;
                     *mdepth = 0;
-                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512
+                    gtd::stack<uint64_t> tree{8}; // Already provides a depth of 8*64 = 512. edit: TOO DEEP
                     SIMPQUAD_LOOP(ptol /= 4;, ptol = org_ptol/std::pow(4, stack._size);,
                                   else if (stack._size == reach)
                                       {ires = dxo12*(fa + 4*fm1 + 2*fm2 + 4*fm3 + fb); goto other_1;},
@@ -675,7 +692,26 @@ namespace diff {
         R fym2mfym3;
         uint64_t *mptr;
         bool reached = false;
-#define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after, par000) \
+#define PADJ \
+        if constexpr (std::same_as<R, gtd::complex<T>>) { \
+            gtd::point<T, 3> points[5] = {{ya,   fya._real,  fya._imag}, \
+                                          {ym1, fym1._real, fym1._imag}, \
+                                          {ym2, fym2._real, fym2._imag}, \
+                                          {ym3, fym3._real, fym3._imag}, \
+                                          {yb,   fyb._real,  fyb._imag}}; \
+            ptol_y *= gtd::max_dist<T, 3>(points, 5); \
+            /* std::cout << "max. dist: " << gtd::max_dist<T, 3>(points, 5) << std::endl; */ \
+        } else { \
+            gtd::point<T, 2> points[5] = {{ya,   fya}, \
+                                          {ym1, fym1}, \
+                                          {ym2, fym2}, \
+                                          {ym3, fym3}, \
+                                          {yb,   fyb}}; \
+            ptol_y *= gtd::max_dist<T, 2>(points, 5); \
+            /* std::cout << "max. dist: " << gtd::max_dist<T, 2>(points, 5) << std::endl; */ \
+        } \
+        org_ptol_y = ptol_y;
+#define SIMPDBLQUAD_MOST(par0, par00, par1, par2, par3, lab1, lab2, after, par000, par0000) \
         y = ya; \
         fya = simpquad<T, R, FL, false>(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, mptr); after \
         y = ym1; \
@@ -685,7 +721,7 @@ namespace diff {
         y = ym3; \
         fym3 = simpquad<T, R, FL, false>(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
         y = yb; \
-        fyb = simpquad<T, R, FL, false>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr); after \
+        fyb = simpquad<T, R, FL, false>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr); after par0000 \
         while (1) { \
             if (!reached && (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)) \
             {reached = true; par000; ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); \
@@ -798,7 +834,7 @@ namespace diff {
             } \
         }
         if (ptol_y >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
-            const T org_ptol_y = ptol_y;
+            T org_ptol_y;
             if (mdepth_y) {
                 // uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
@@ -815,7 +851,7 @@ namespace diff {
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_11;},
                                          BT CROSS(11),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_11, other_11, XDEPTH, reach = stack._size)
+                                         divide_11, other_11, XDEPTH, reach = stack._size, PADJ)
                     } else {
                         mptr = nullptr;
                         *mdepth_y = 0;
@@ -825,7 +861,7 @@ namespace diff {
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_12;},
                                          BT CROSS(12),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_12, other_12, EMPTY, reach = stack._size)
+                                         divide_12, other_12, EMPTY, reach = stack._size, PADJ)
                     }
                 } else {
                     if (mdepth_x) {
@@ -841,7 +877,7 @@ namespace diff {
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_21;}, BT
                                          CROSS(21),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_21, other_21, XDEPTH, max_depth = stack._size)
+                                         divide_21, other_21, XDEPTH, max_depth = stack._size, PADJ)
                     } else {
                         mptr = nullptr;
                         uint64_t max_depth = *mdepth_y;
@@ -852,7 +888,7 @@ namespace diff {
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_22;}, BT
                                          CROSS(22),
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_22, other_22, EMPTY, max_depth = stack._size)
+                                         divide_22, other_22, EMPTY, max_depth = stack._size, PADJ)
                     }
                 }
             } else {
@@ -867,7 +903,7 @@ namespace diff {
                                      else if (stack._size == reach)
                                      {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_31;},
                                      BT CROSS(31),
-                                     EMPTY, divide_31, other_31, XDEPTH, reach = stack._size)
+                                     EMPTY, divide_31, other_31, XDEPTH, reach = stack._size, PADJ)
                 } else {
                     mptr = nullptr;
                     gtd::stack<uint64_t> tree{8};
@@ -875,7 +911,7 @@ namespace diff {
                                      else if (stack._size == reach)
                                      {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_32;},
                                      BT CROSS(32),
-                                     EMPTY, divide_32, other_32, EMPTY, reach = stack._size)
+                                     EMPTY, divide_32, other_32, EMPTY, reach = stack._size, PADJ)
                 }
             }
         } else {
@@ -894,7 +930,7 @@ namespace diff {
                                          else if (stack._size == reach)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_41;}, EMPTY,
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_41, other_41, XDEPTH, reach = stack._size)
+                                         divide_41, other_41, XDEPTH, reach = stack._size,)
                     } else {
                         mptr = nullptr;
                         *mdepth_y = 0;
@@ -903,7 +939,7 @@ namespace diff {
                                          else if (stack._size == reach)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_42;}, EMPTY,
                                          if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_42, other_42, EMPTY, reach = stack._size)
+                                         divide_42, other_42, EMPTY, reach = stack._size,)
                     }
                 } else {
                     if (mdepth_x) {
@@ -918,7 +954,7 @@ namespace diff {
                                          else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_51;},
                                          EMPTY, if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_51, other_51, XDEPTH, max_depth = stack._size)
+                                         divide_51, other_51, XDEPTH, max_depth = stack._size,)
                     } else {
                         mptr = nullptr;
                         uint64_t max_depth = *mdepth_y;
@@ -928,7 +964,7 @@ namespace diff {
                                          else if (stack._size == max_depth)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_52;},
                                          EMPTY, if (stack._size > *mdepth_y) {*mdepth_y = stack._size;},
-                                         divide_52, other_52, EMPTY, max_depth = stack._size)
+                                         divide_52, other_52, EMPTY, max_depth = stack._size,)
                     }
                 }
             } else {
@@ -942,14 +978,14 @@ namespace diff {
                     SIMPDBLQUAD_MOST(EMPTY, EMPTY,
                                      else if (stack._size == reach)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_61;},
-                                     EMPTY, EMPTY, divide_61, other_61, XDEPTH, reach=stack._size)
+                                     EMPTY, EMPTY, divide_61, other_61, XDEPTH, reach=stack._size,)
                 } else {
                     mptr = nullptr;
                     gtd::stack<uint64_t> tree{8};
                     SIMPDBLQUAD_MOST(EMPTY, EMPTY,
                                      else if (stack._size == reach)
                                          {ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); goto other_62;},
-                                     EMPTY, EMPTY, divide_62, other_62, EMPTY, reach=stack._size)
+                                     EMPTY, EMPTY, divide_62, other_62, EMPTY, reach=stack._size,)
                 }
             }
         }
