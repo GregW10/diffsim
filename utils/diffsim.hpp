@@ -110,6 +110,7 @@ namespace diff {
                                     T _I0,
                                     T _E0,
                                     T _pw,
+                                    T _ph,
                                     T _x0,
                                     T _y0,
                                     T _zdsq,
@@ -174,6 +175,7 @@ namespace diff {
                                                U _I0,
                                                U _E0,
                                                U _pw,
+                                               U _ph,
                                                U _x0,
                                                U _y0,
                                                U _zdsq,
@@ -302,7 +304,8 @@ namespace diff {
         T k; // wavenumber of light (rad m^-1)
         T I0; // intensity of light incident on aperture (W/m^2) - only stored to avoid recalculation
         T E0; // electric field amplitude of light incident on aperture (V/m)
-        T pw; // pixel width (and height, since pixels are squares)
+        T pw; // pixel width
+        T ph; // pixel height
         T x0;
         T y0;
         T zdsq;
@@ -315,7 +318,7 @@ namespace diff {
 #endif
         HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
             vec->x = x0 + i*pw;
-            vec->y = y0 + j*pw;
+            vec->y = y0 + j*ph;
         }
 #ifndef __CUDACC__
         void diffract_thread(T abstol_y,
@@ -389,8 +392,9 @@ namespace diff {
         I0{incident_light_intensity},
         E0{intensity_to_E0(incident_light_intensity)},
         pw{((T) dttr_width)/dttr_width_px},
+        ph{((T) dttr_length)/dttr_length_px},
         x0{(T) (0.5*(pw - xdttr))},
-        y0{(T) (0.5*(pw - ydttr))},
+        y0{(T) (0.5*(ph - ydttr))},
         zdsq{dttr_dist*dttr_dist},
         outside_factor{(gtd::complex<T>::m_imunit*zdist*E0)/lambda}
         {
@@ -552,6 +556,7 @@ namespace diff {
                                             this->I0,
                                             this->E0,
                                             this->pw,
+                                            this->ph,
                                             this->x0,
                                             this->y0,
                                             this->zdsq,
@@ -683,8 +688,9 @@ namespace diff {
             this->I0 = info.I_0;
             this->E0 = intensity_to_E0(info.I_0);
             this->pw = info.w/info.nx;
+            this->ph = info.l/info.ny;
             this->x0 = 0.5*(this->pw - info.w);
-            this->y0 = 0.5*(this->pw - info.l);
+            this->y0 = 0.5*(this->ph - info.l);
             this->zdsq = info.zd*info.zd;
             this->outside_factor = (gtd::complex<T>::m_imunit*info.zd*this->E0)/info.lam;
             return psize;
@@ -712,6 +718,7 @@ namespace diff {
                                                U _I0,
                                                U _E0,
                                                U _pw,
+                                               U _ph,
                                                U _x0,
                                                U _y0,
                                                U _zdsq,
@@ -746,6 +753,7 @@ namespace diff {
                                     T _I0,
                                     T _E0,
                                     T _pw,
+                                    T _ph,
                                     T _x0,
                                     T _y0,
                                     T _zdsq,
@@ -784,7 +792,7 @@ namespace diff {
         coord c{offset % _nw, offset/_nw};
         // sim->pix_to_pos(&pos, c.x, c.y);
         pos.x = _x0 + c.x*_pw;
-        pos.y = _y0 + c.y*_pw;
+        pos.y = _y0 + c.y*_ph;
         // F g = _gfunc;
         // F h = _hfunc;
         // F g{(T) -0.00001};

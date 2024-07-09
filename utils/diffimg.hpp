@@ -304,10 +304,10 @@ namespace diff {
             gtd::mmapper bmp{bmp_arrsize};
             unsigned char *uptr = (unsigned char*) bmp.get();
             bmp_col *cptr;
-            while (i < diffalloc<T>::nw) {
+            while (i < diffalloc<T>::nh) {
                 cptr = (bmp_col*) uptr;
                 j = 0;
-                while (j < diffalloc<T>::nh) {
+                while (j < diffalloc<T>::nw) {
                     // std::cout << "*dptr: " << *dptr << ", minv: " << minv << ", maxv: " << maxv << std::endl;
                     // if ((*dptr - minv)/maxv > 0.5)
                     //     std::cout << "argument: " << (*dptr - minv)/maxv << std::endl;
