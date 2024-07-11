@@ -5,26 +5,44 @@ ny=256
 
 I0=1
 
-lam_i="0.000000380" # 380 nm - approx. bottom of human perception
-lam_f="0.000000740" # 740 nm - approx. top of human perception
-lam_n=21 # number of wavelength values to use
-lam_d=$(echo "($lam_f - $lam_i)/($lam_n - 1)" | bc -l) # step in wavelength
+zd_muln="0.02"
+zd_sigln="2"
 
-apsl=("0.00001" "0.00002" "0.00005" "0.00010" "0.00020" "0.00050" "0.00100" "0.00200" "0.00500" "0.01000" "0.02000" \
-"0.05000") # aperture side-length
+lam_muln="0.005"
+lam_sigln="0.5"
 
-zdist=("0.00001" "0.00002" "0.00005" "0.00010" "0.00020" "0.00050" "0.00100" "0.00200" "0.00500" "0.01000" "0.02000" \
-"0.05000" "0.10000" "0.20000" "0.50000" "1.00000") # distance to detector
+apl_muln="0.005"
+apl_sigln="0.5"
 
-echo -e "Starting wavelength is $(echo "scale=2;$lam_i*1000000000" | bc -l) nm.\nFinal wavelength is \
-$(echo "scale=2;$lam_f*1000000000" | bc -l) nm.\nStep is $(echo "scale=2;$lam_d*1000000000" | bc -l) nm."
+cutoff_time=600 # maximum time given for a pattern to be generated (in seconds)
 
 num=10000 # number of patterns to generate
 digs=$(echo "val=l($num - 1)/l(10);scale=0;val/1 + 1;" | bc -l) # number of digits in file name
-counter=0
+counter=1
 
 gen_pat() {
   local pref=$(printf "%0${digs}d" $counter)
-  dffrcg --nx $nx --ny $ny --lam $1 --xa $2 --xb $3 --ya $4 --yb $5 --z $6 --w $7 --l $8 --I0 $I0 --dffr $pref.dffr \
-  --bmp $pref.bmp
+  timeout $cutoff_time dffrcc --nx $nx --ny $ny --lam $1 --xa $2 --xb $3 --ya $2 --yb $3 --z $4 --w $5 --l $5 --I0 $I0 \
+  --dffr $pref.dffr --bmp $pref.bmp --ptime 0 -v --cmap bgr > log$pref 2>&1
+  return $?
 }
+
+while [ $counter -le $num ]; do
+  lam=$(logn $lam_muln $lam_sigln)
+  apl=$(logn $apl_muln $apl_sigln)
+  if [ $(echo "$lam > $apl" | bc -l) == 1 ] || [ $(echo "$lam < $apl/20" | bc -l) == 1 ]; then
+    continue;
+  fi
+  zd=$(logn $zd_muln $zd_sigln)
+  wl=$(echo "1.5*$zd" | bc -l) # physical width and length of detector (since the detector is square)
+  if [ $(echo "$wl <= 2*$apl" | bc -l) == 1 ]; then
+    continue;
+  fi
+  xyb=$(echo "$apl/2" | bc -l) # upper x- and y-limits of the aperture (since the aperture is square)
+  gen_pat $lam "-$xyb" $xyb $zd $wl
+  if [ $? != 0 ]; then
+    continue;
+  fi
+  echo -en "Pattern $counter generated with:\n\tz-dist: $zd m\n\tap_len: $apl m\n\tlambda: $lam m\n\n"
+  counter=$((counter + 1))
+done

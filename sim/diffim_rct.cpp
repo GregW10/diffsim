@@ -194,24 +194,26 @@ int start_sim(gtd::parser &parser) {
 #endif
     if constexpr (verbose)
         std::cout << "Starting simulation with the following parameters:"
-                     "\n\tAperture lower x-limit = " << vals.xa       << " m"
-                     "\n\tAperture upper x-limit = " << vals.xb       << " m"
-                     "\n\tAperture lower y-limit = " << vals.ya       << " m"
-                     "\n\tAperture upper y-limit = " << vals.yb       << " m"
-                     "\n\tWavelength of light    = " << vals.lam      << " m"
-                     "\n\tDistance to detector   = " << vals.z        << " m"
-                     "\n\tWidth of detector      = " << vals.w        << " m"
-                     "\n\tLength of detector     = " << vals.l        << " m"
-                     "\n\tDetector x-resolution  = " << vals.nx       <<
-                     "\n\tDetector y-resolution  = " << vals.ny       <<
-                     "\n\tLight intensity        = " << vals.I0       << " W/m^2"
-                     "\n\tAbsolute y-tolerance   = " << vals.abstol_y <<
-                     "\n\tRelative y-tolerance   = " << vals.reltol_y <<
-                     "\n\tPeriodic y-tolerance   = " << vals.ptol_y   <<
-                     "\n\tAbsolute x-tolerance   = " << vals.abstol_x <<
-                     "\n\tRelative x-tolerance   = " << vals.reltol_x <<
-                     "\n\tPeriodic x-tolerance   = " << vals.ptol_x   <<
-                     "\n\tMax. y-recursion-depth = " << vals.mdepth_y <<
+                     "\n\tAperture lower x-limit = " << vals.xa             << " m"
+                     "\n\tAperture upper x-limit = " << vals.xb             << " m"
+                     "\n\tAperture lower y-limit = " << vals.ya             << " m"
+                     "\n\tAperture upper y-limit = " << vals.yb             << " m"
+                     "\n\tAperture x-length      = " << (vals.xb - vals.xa) << " m"
+                     "\n\tAperture y-length      = " << (vals.yb - vals.ya) << " m"
+                     "\n\tWavelength of light    = " << vals.lam            << " m"
+                     "\n\tDistance to detector   = " << vals.z              << " m"
+                     "\n\tWidth of detector      = " << vals.w              << " m"
+                     "\n\tLength of detector     = " << vals.l              << " m"
+                     "\n\tDetector x-resolution  = " << vals.nx             <<
+                     "\n\tDetector y-resolution  = " << vals.ny             <<
+                     "\n\tLight intensity        = " << vals.I0             << " W/m^2"
+                     "\n\tAbsolute y-tolerance   = " << vals.abstol_y       <<
+                     "\n\tRelative y-tolerance   = " << vals.reltol_y       <<
+                     "\n\tPeriodic y-tolerance   = " << vals.ptol_y         <<
+                     "\n\tAbsolute x-tolerance   = " << vals.abstol_x       <<
+                     "\n\tRelative x-tolerance   = " << vals.reltol_x       <<
+                     "\n\tPeriodic x-tolerance   = " << vals.ptol_x         <<
+                     "\n\tMax. y-recursion-depth = " << vals.mdepth_y       <<
                      "\n\tMax. x-recursion-depth = " << vals.mdepth_x
 #ifdef __CUDACC__
                      << '\n';
