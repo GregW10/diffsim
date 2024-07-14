@@ -350,6 +350,11 @@ namespace diff {
                                          (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
                                           abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                           &mdepth_x)*this->outside_factor); // get intensity
+                /* *(diffalloc<T>::data + offset) =
+                        E0_to_intensity(diff::dbl_simpson<T, gtd::complex<T>, decltype(integrand),
+                                decltype(ap->gfunc()), decltype(ap->hfunc())>
+                                         (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
+                                          500, 500)*this->outside_factor); // get intensity */
                 offset = counter++;
             }
         }

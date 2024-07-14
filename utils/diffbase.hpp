@@ -299,19 +299,47 @@ namespace diff {
             putchar('\n');
         return res; // for completeness, but would never be reached
     }
-    template <gtd::numeric T, gtd::callret<T> F>
-    HOST_DEVICE T integrate_simpson(const F &f, T a, T b, uint64_t num) {
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F>
+    HOST_DEVICE R simpson(const F &f, T a, T b, uint64_t num) {
+        if (a == b)
+            return {};
         T dx = (b - a)/num;
         uint64_t i = 1;
         T offset;
         T a_p_dxo2 = a + dx/2;
-        T res = 0.5*f(a) + 2*f(a_p_dxo2);
+        R res = 0.5*f(a) + 2*f(a_p_dxo2);
         while (i < num) {
             offset = i++*dx;
             res += f(a + offset) + 2*f(a_p_dxo2 + offset);
         }
         res += 0.5*f(b);
         res *= dx/3;
+        return res;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R dbl_simpson(const F &f, T ya, T yb, const G &gfunc, const H &hfunc, uint64_t num_y, uint64_t num_x) {
+        if (ya == yb)
+            return {};
+        T dy = (yb - ya)/num_y;
+        uint64_t i = 1;
+        T offset;
+        T a_p_dyo2 = ya + dy/2;
+        T y = ya;
+        auto fy_lam = [&f, &y](const T &x){return f(x, y);};
+        using fy_t = decltype(fy_lam);
+        R res = 0.5*simpson<T, R, fy_t>(fy_lam, gfunc(ya), hfunc(ya), num_x);
+        y = a_p_dyo2;
+        res += 2*simpson<T, R, fy_t>(fy_lam, gfunc(a_p_dyo2), hfunc(a_p_dyo2), num_x);
+        while (i < num_y) {
+            offset = i++*dy;
+            y = ya + offset;
+            res += simpson<T, R, fy_t>(fy_lam, gfunc(y), hfunc(y), num_x);
+            y = a_p_dyo2 + offset;
+            res += 2*simpson<T, R, fy_t>(fy_lam, gfunc(y), hfunc(y), num_x);
+        }
+        y = yb;
+        res += 0.5*simpson<T, R, fy_t>(fy_lam, gfunc(yb), hfunc(yb), num_x);
+        res *= dy/3;
         return res;
     }
     template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F, bool prog>
