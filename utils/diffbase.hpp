@@ -533,14 +533,14 @@ namespace diff {
             } \
         }
         if (ptol >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
-            if constexpr (std::same_as<R, gtd::complex<T>>) {
+            /* if constexpr (std::same_as<R, gtd::complex<T>>) {
                 gtd::point<T, 3> points[5] = {{a,   fa._real,  fa._imag},
                                               {m1, fm1._real, fm1._imag},
                                               {m2, fm2._real, fm2._imag},
                                               {m3, fm3._real, fm3._imag},
                                               {b,   fb._real,  fb._imag}};
                 ptol *= gtd::max_dist<T, 3>(points, 5);
-                /* std::cout << "max. dist: " << gtd::max_dist<T, 3>(points, 5) << std::endl; */
+                // std::cout << "max. dist: " << gtd::max_dist<T, 3>(points, 5) << std::endl;
             } else {
                 gtd::point<T, 2> points[5] = {{a,   fa},
                                               {m1, fm1},
@@ -548,8 +548,8 @@ namespace diff {
                                               {m3, fm3},
                                               {b,   fb}};
                 ptol *= gtd::max_dist<T, 2>(points, 5);
-                /* std::cout << "max. dist: " << gtd::max_dist<T, 2>(points, 5) << std::endl; */
-            }
+                // std::cout << "max. dist: " << gtd::max_dist<T, 2>(points, 5) << std::endl;
+            } */
             const T org_ptol = ptol;
             if (mdepth) {
                 // uint64_t _s;
@@ -749,7 +749,7 @@ namespace diff {
         y = ym3; \
         fym3 = simpquad<T, R, FL, false>(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, mptr); after \
         y = yb; \
-        fyb = simpquad<T, R, FL, false>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr); after par0000 \
+        fyb = simpquad<T, R, FL, false>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, mptr);after/*par0000*/\
         while (1) { \
             if (!reached && (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)) \
             {reached = true; par000; ires = dyo12*(fya + 4*fym1 + 2*fym2 + 4*fym3 + fyb); \
@@ -862,7 +862,7 @@ namespace diff {
             } \
         }
         if (ptol_y >= 0) { // I'm doing this macro insanity to avoid a shit-tonne of code duplication
-            T org_ptol_y;
+            T org_ptol_y = ptol_y;
             if (mdepth_y) {
                 // uint64_t _s;
                 if (*mdepth_y == NO_MAX_DEPTH) {
@@ -1032,6 +1032,526 @@ namespace diff {
         if constexpr (prog)
             putchar('\n');
         return res; // for completeness, but would never be reached
+    }
+    template <gtd::numeric T, gtd::numeric R>
+    inline bool collinear(const T &x1, const T &x2, const T &x3, const T &x4, const T &x5,
+                          const R &f1, const R &f2, const R &f3, const R &f4, const R &f5, const T &ptol) {
+        if (ptol < 0)
+            return false;
+        if constexpr (std::same_as<R, gtd::complex<T>>) {
+            R g12 = (f2 - f1)/(x2 - x1);
+            R g23 = (f3 - f2)/(x3 - x2);
+            if (gtd::abs(g23._real - g12._real) > ptol || gtd::abs(g23._imag - g12._imag) > ptol)
+                return false;
+            R g34 = (f4 - f3)/(x4 - x3);
+            if (gtd::abs(g34._real - g23._real) > ptol || gtd::abs(g34._imag - g23._imag) > ptol)
+                return false;
+            R g45 = (f5 - f4)/(x5 - x4);
+            if (gtd::abs(g45._real - g34._real) > ptol || gtd::abs(g45._imag - g34._imag) > ptol)
+                return false;
+        } else {
+            static_assert(std::same_as<T, R>,
+                          "Types \"T\" and \"R\" must be identical if \"R\" is not \"gtd::complex<T>\".\n");
+            T g12 = (f2 - f1)/(x2 - x1);
+            T g23 = (f3 - f2)/(x3 - x2);
+            if (gtd::abs(g23 - g12) > ptol)
+                return false;
+            T g34 = (f4 - f3)/(x4 - x3);
+            if (gtd::abs(g34 - g23) > ptol)
+                return false;
+            T g45 = (f5 - f4)/(x5 - x4);
+            if (gtd::abs(g45 - g34) > ptol)
+                return false;
+        }
+        return true;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F>
+    HOST_DEVICE R simpquad_recurse(const F &f,
+                                   const T &a,
+                                   const T &m2,
+                                   const T &b,
+                                   const R &fa,
+                                   const R &fm2,
+                                   const R &fb,
+                                   T dxo4,
+                                   const T &dxo6,
+                                   T abstol,
+                                   const T &reltol,
+                                   T ptol,
+                                   uint64_t *mdepth,
+                                   const uint64_t &maxd,
+                                   uint64_t cdepth) {
+        if (cdepth == maxd) {
+            if (cdepth > *mdepth)
+                *mdepth = cdepth;
+            return (dxo6/2)*(fa + 4*f(m2 - dxo4) + 2*fm2 + 4*f(m2 + dxo4) + fb);
+        }
+        T dxo12 = dxo6/2;
+        T m1 = m2 - dxo4;
+        T m3 = m2 + dxo4;
+        R fm1 = f(m1);
+        R fm3 = f(m3);
+        R faPfb = fa + fb;
+        R estimate = dxo6*(faPfb + 4*fm2);
+        R ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3);
+        T absval;
+        if (collinear(a, m1, m2, m3, b, fa, fm1, fm2, fm3, fb, ptol) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(ires*reltol))) {
+            dxo4 /= 2;
+            abstol /= 2;
+            ptol /= 4;
+            ++cdepth;
+            return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12,
+                                    abstol, reltol, ptol, mdepth, maxd, cdepth) +
+                   simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12,
+                                    abstol, reltol, ptol, mdepth, maxd, cdepth);
+        }
+        if (cdepth > *mdepth)
+            *mdepth = cdepth;
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F>
+    HOST_DEVICE R simpquad_recurse(const F &f,
+                                   const T &a,
+                                   const T &m2,
+                                   const T &b,
+                                   const R &fa,
+                                   const R &fm2,
+                                   const R &fb,
+                                   T dxo4,
+                                   const T &dxo6,
+                                   T abstol,
+                                   const T &reltol,
+                                   T ptol) {
+        T dxo12 = dxo6/2;
+        T m1 = m2 - dxo4;
+        T m3 = m2 + dxo4;
+        R fm1 = f(m1);
+        R fm3 = f(m3);
+        R faPfb = fa + fb;
+        R estimate = dxo6*(faPfb + 4*fm2);
+        R ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3);
+        T absval;
+        if (collinear(a, m1, m2, m3, b, fa, fm1, fm2, fm3, fb, ptol) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(ires*reltol))) {
+            dxo4 /= 2;
+            abstol /= 2;
+            ptol /= 4;
+            return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12, abstol, reltol, ptol) +
+                   simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12, abstol, reltol, ptol);
+        }
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> F>
+    HOST_DEVICE R simpqr(const F &f,
+                         T a,
+                         T b,
+                         T abstol = 1e-8,
+                         T reltol = 1e-8,
+                         T ptol = 1e-10,
+                         uint64_t *mdepth = nullptr) {
+        uint64_t maxd = NO_MAX_DEPTH;
+        T dx = b - a;
+        T dxo4 = dx/4;
+        T dxo6 = dx/6;
+        T dxo12 = dx/12;
+        T m2 = (a + b)/2;
+        T m1 = m2 - dxo4;
+        T m3 = m2 + dxo4;
+        R fa = f(a);
+        R fm1 = f(m1);
+        R fm2 = f(m2);
+        R fm3 = f(m3);
+        R fb = f(b);
+        R faPfb = fa + fb;
+        R estimate = dxo6*(faPfb + 4*fm2);
+        R ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3);
+        T absval;
+        if (mdepth) {
+            if (!*mdepth)
+                return ires;
+            maxd = *mdepth;
+            *mdepth = 0;
+            if (collinear(a, m1, m2, m3, b, fa, fm1, fm2, fm3, fb, ptol) ||
+                ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(ires*reltol))) {
+                dxo4 /= 2;
+                abstol /= 2;
+                ptol /= 4;
+                return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1)+
+                       simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1);
+            }
+        }
+        else {
+            if (collinear(a, m1, m2, m3, b, fa, fm1, fm2, fm3, fb, ptol) ||
+                ((absval = gtd::abs(ires - estimate)) > abstol && absval > gtd::abs(ires*reltol))) {
+                dxo4 /= 2;
+                abstol /= 2;
+                ptol /= 4;
+                return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12, abstol, reltol, ptol) +
+                       simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12, abstol, reltol, ptol);
+            }
+        }
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> L, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R simpdblquad_recurse(const L &l,
+                                      T &y,
+                                      const G &gfunc,
+                                      const H &hfunc,
+                                      const T &ya,
+                                      const T &ym2,
+                                      const T &yb,
+                                      const R &fya,
+                                      const R &fym2,
+                                      const R &fyb,
+                                      T dyo4,
+                                      const T &dyo6,
+                                      T abstol_y,
+                                      const T &reltol_y,
+                                      T ptol_y,
+                                      uint64_t *mdepth_y,
+                                      const uint64_t &maxd_y,
+                                      uint64_t cdepth_y,
+                                      const T &abstol_x,
+                                      const T &reltol_x,
+                                      const T &ptol_x,
+                                      uint64_t *mdepth_x,
+                                      const uint64_t &maxd_x) {
+        uint64_t maxx;
+        T dyo12 = dyo6/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        maxx = maxd_x;
+        y = ym1;
+        R fym1 = simpqr<T, R, L>(l, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, &maxx);
+        if (maxx > *mdepth_x)
+            *mdepth_x = maxx;
+        maxx = maxd_x;
+        y = ym3;
+        R fym3 = simpqr<T, R, L>(l, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, &maxx);
+        if (maxx > *mdepth_x)
+            *mdepth_x = maxx;
+        R fyaPfyb = fya + fyb;
+        R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        if (cdepth_y == maxd_y) {
+            if (cdepth_y > *mdepth_y)
+                *mdepth_y = cdepth_y;
+            return ires;
+        }
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
+        T absval;
+        if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+            dyo4 /= 2;
+            abstol_y /= 2;
+            ptol_y /= 4;
+            ++cdepth_y;
+            return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                   simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+        }
+        if (cdepth_y > *mdepth_y)
+            *mdepth_y = cdepth_y;
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> L, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R simpdblquad_recurse(const L &l,
+                                      T &y,
+                                      const G &gfunc,
+                                      const H &hfunc,
+                                      const T &ya,
+                                      const T &ym2,
+                                      const T &yb,
+                                      const R &fya,
+                                      const R &fym2,
+                                      const R &fyb,
+                                      T dyo4,
+                                      const T &dyo6,
+                                      T abstol_y,
+                                      const T &reltol_y,
+                                      T ptol_y,
+                                      uint64_t *mdepth_y,
+                                      const uint64_t &maxd_y,
+                                      uint64_t cdepth_y,
+                                      const T &abstol_x,
+                                      const T &reltol_x,
+                                      const T &ptol_x) {
+        T dyo12 = dyo6/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        y = ym1;
+        R fym1 = simpqr<T, R, L>(l, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, nullptr);
+        y = ym3;
+        R fym3 = simpqr<T, R, L>(l, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, nullptr);
+        R fyaPfyb = fya + fyb;
+        R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        if (cdepth_y == maxd_y) {
+            if (cdepth_y > *mdepth_y)
+                *mdepth_y = cdepth_y;
+            return ires;
+        }
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
+        T absval;
+        if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+            dyo4 /= 2;
+            abstol_y /= 2;
+            ptol_y /= 4;
+            ++cdepth_y;
+            return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
+                                       abstol_x, reltol_x, ptol_x) +
+                   simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
+                                       abstol_x, reltol_x, ptol_x);
+        }
+        if (cdepth_y > *mdepth_y)
+            *mdepth_y = cdepth_y;
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> L, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R simpdblquad_recurse(const L &l,
+                                      T &y,
+                                      const G &gfunc,
+                                      const H &hfunc,
+                                      const T &ya,
+                                      const T &ym2,
+                                      const T &yb,
+                                      const R &fya,
+                                      const R &fym2,
+                                      const R &fyb,
+                                      T dyo4,
+                                      const T &dyo6,
+                                      T abstol_y,
+                                      const T &reltol_y,
+                                      T ptol_y,
+                                      const T &abstol_x,
+                                      const T &reltol_x,
+                                      const T &ptol_x,
+                                      uint64_t *mdepth_x,
+                                      const uint64_t &maxd_x) {
+        uint64_t maxx;
+        T dyo12 = dyo6/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        maxx = maxd_x;
+        y = ym1;
+        R fym1 = simpqr<T, R, L>(l, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, &maxx);
+        if (maxx > *mdepth_x)
+            *mdepth_x = maxx;
+        maxx = maxd_x;
+        y = ym3;
+        R fym3 = simpqr<T, R, L>(l, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, &maxx);
+        if (maxx > *mdepth_x)
+            *mdepth_x = maxx;
+        R fyaPfyb = fya + fyb;
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
+        R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        T absval;
+        if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+            dyo4 /= 2;
+            abstol_y /= 2;
+            ptol_y /= 4;
+            return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y,
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                   simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y,
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+        }
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::callret<T, R> L, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R simpdblquad_recurse(const L &l,
+                                      T &y,
+                                      const G &gfunc,
+                                      const H &hfunc,
+                                      const T &ya,
+                                      const T &ym2,
+                                      const T &yb,
+                                      const R &fya,
+                                      const R &fym2,
+                                      const R &fyb,
+                                      T dyo4,
+                                      const T &dyo6,
+                                      T abstol_y,
+                                      const T &reltol_y,
+                                      T ptol_y,
+                                      const T &abstol_x,
+                                      const T &reltol_x,
+                                      const T &ptol_x) {
+        T dyo12 = dyo6/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        y = ym1;
+        R fym1 = simpqr<T, R, L>(l, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, nullptr);
+        y = ym3;
+        R fym3 = simpqr<T, R, L>(l, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, nullptr);
+        R fyaPfyb = fya + fyb;
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
+        R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        T absval;
+        if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+            ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+            dyo4 /= 2;
+            abstol_y /= 2;
+            ptol_y /= 4;
+            return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y,
+                                       abstol_x, reltol_x, ptol_x) +
+                   simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                       abstol_y, reltol_y, ptol_y,
+                                       abstol_x, reltol_x, ptol_x);
+        }
+        return ires;
+    }
+    template <gtd::numeric T, gtd::numeric R, gtd::calldblret<T, R> F, gtd::callret<T> G, gtd::callret<T> H>
+    HOST_DEVICE R simpdqr(const F &f,
+                          T ya,
+                          T yb,
+                          const G &gfunc,
+                          const H &hfunc,
+                          T abstol_y = 1e-8,
+                          T reltol_y = 1e-8,
+                          T ptol_y = 1e-10,
+                          uint64_t *mdepth_y = nullptr,
+                          T abstol_x = 1e-8,
+                          T reltol_x = 1e-8,
+                          T ptol_x = 1e-10,
+                          uint64_t *mdepth_x = nullptr) {
+        T dy = yb - ya;
+        T dyo4 = dy/4;
+        T dyo6 = dy/6;
+        T dyo12 = dy/12;
+        T ym2 = (ya + yb)/2;
+        T ym1 = ym2 - dyo4;
+        T ym3 = ym2 + dyo4;
+        T y;
+        auto fy_lam = [&f, &y](const T &x){return f(x, y);};
+        using lam_t = decltype(fy_lam);
+        R fya;
+        R fym1;
+        R fym2;
+        R fym3;
+        R fyb;
+        R estimate;
+        R ires;
+        T absval;
+        if (mdepth_x) {
+            uint64_t maxd_x = *mdepth_x;
+            uint64_t maxx = *mdepth_x;
+            *mdepth_x = 0;
+            y = ya;
+            fya = simpqr<T, R, lam_t>(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, &maxx);
+            if (maxx > *mdepth_x)
+                *mdepth_x = maxx;
+            maxx = maxd_x;
+            y = ym1;
+            fym1 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, &maxx);
+            if (maxx > *mdepth_x)
+                *mdepth_x = maxx;
+            maxx = maxd_x;
+            y = ym2;
+            fym2 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym2), hfunc(ym2), abstol_x, reltol_x, ptol_x, &maxx);
+            if (maxx > *mdepth_x)
+                *mdepth_x = maxx;
+            maxx = maxd_x;
+            y = ym3;
+            fym3 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, &maxx);
+            if (maxx > *mdepth_x)
+                *mdepth_x = maxx;
+            maxx = maxd_x;
+            y = yb;
+            fyb = simpqr<T, R, lam_t>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, &maxx);
+            if (maxx > *mdepth_x)
+                *mdepth_x = maxx;
+            maxx = maxd_x;
+            R fyaPfyb = fya + fyb;
+            estimate = dyo6*(fyaPfyb + 4*fym2);
+            ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+            if (mdepth_y) {
+                if (!*mdepth_y)
+                    return ires;
+                uint64_t maxd_y = *mdepth_y;
+                *mdepth_y = 0;
+                if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+                    ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+                    dyo4 /= 2;
+                    abstol_y /= 2;
+                    ptol_y /= 4;
+                    return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                           simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+                }
+            } else {
+                if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+                    ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+                    dyo4 /= 2;
+                    abstol_y /= 2;
+                    ptol_y /= 4;
+                    return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y,
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                           simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y,
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+                }
+            }
+        }
+        else {
+            y = ya;
+            fya = simpqr<T, R, lam_t>(fy_lam, gfunc(ya), hfunc(ya), abstol_x, reltol_x, ptol_x, nullptr);
+            y = ym1;
+            fym1 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, nullptr);
+            y = ym2;
+            fym2 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym2), hfunc(ym2), abstol_x, reltol_x, ptol_x, nullptr);
+            y = ym3;
+            fym3 = simpqr<T, R, lam_t>(fy_lam, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, nullptr);
+            y = yb;
+            fyb = simpqr<T, R, lam_t>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, nullptr);
+            R fyaPfyb = fya + fyb;
+            estimate = dyo6*(fyaPfyb + 4*fym2);
+            ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+            if (mdepth_y) {
+                if (!*mdepth_y)
+                    return ires;
+                uint64_t maxd_y = *mdepth_y;
+                *mdepth_y = 0;
+                if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+                    ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+                    dyo4 /= 2;
+                    abstol_y /= 2;
+                    ptol_y /= 4;
+                    return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
+                                               abstol_x, reltol_x, ptol_x) +
+                           simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
+                                               abstol_x, reltol_x, ptol_x);
+                }
+            } else {
+                if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
+                    ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
+                    dyo4 /= 2;
+                    abstol_y /= 2;
+                    ptol_y /= 4;
+                    return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y,
+                                               abstol_x, reltol_x, ptol_x) +
+                           simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
+                                               abstol_y, reltol_y, ptol_y,
+                                               abstol_x, reltol_x, ptol_x);
+                }
+            }
+        }
+        return ires;
     }
 }
 #endif

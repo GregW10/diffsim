@@ -219,14 +219,17 @@ namespace diff {
     class cmaps {
     public:
         static inline const colourmap<T> grayscale{};
-        static inline const colourmap<T> bgr = {{0.0l, colours<T>::blue},
-                                                {0.5l, colours<T>::green},
-                                                {1.0l, colours<T>::red}};
-        static inline const colourmap<T> gbw = {{0.0l, colours<T>::green},
-                                                {0.5l, colours<T>::blue},
-                                                {1.0l, colours<T>::white}};
-        static inline const colourmap<T> gp  = {{0.0l, colours<T>::green},
-                                                {1.0l, colours<T>::pink}};
+        static inline const colourmap<T> bgr  = {{0.0l, colours<T>::blue},
+                                                 {0.5l, colours<T>::green},
+                                                 {1.0l, colours<T>::red}};
+        static inline const colourmap<T> gbw  = {{0.0l, colours<T>::green},
+                                                 {0.5l, colours<T>::blue},
+                                                 {1.0l, colours<T>::white}};
+        static inline const colourmap<T> gp   = {{0.0l, colours<T>::green},
+                                                 {1.0l, colours<T>::pink}};
+        static inline const colourmap<T> mono = {{0.0l, colours<T>::black},
+                                                 {.00392156862745098039l, colours<T>::white},
+                                                 {1.0l, colours<T>::white}};
         static const std::map<std::string, colourmap<T>> all_cmaps;
     };
 #pragma pack(push, 1)
@@ -390,6 +393,8 @@ template <typename T> requires (std::is_floating_point_v<T>)
 inline const std::map<std::string, diff::colourmap<T>> diff::cmaps<T>::all_cmaps = {
         {"grayscale", diff::cmaps<T>::grayscale},
         {"bgr", diff::cmaps<T>::bgr},
-        {"gbw", diff::cmaps<T>::gbw}
+        {"gbw", diff::cmaps<T>::gbw},
+        {"gp" , diff::cmaps<T>::gp },
+        {"mono", diff::cmaps<T>::mono}
 };
 #endif

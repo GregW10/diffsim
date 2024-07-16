@@ -344,17 +344,23 @@ namespace diff {
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 this->pix_to_pos(&pos, c.x, c.y);
-                *(diffalloc<T>::data + offset) =
+                /* *(diffalloc<T>::data + offset) =
                         E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
                                 decltype(ap->gfunc()), decltype(ap->hfunc())>
                                          (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
                                           abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
-                                          &mdepth_x)*this->outside_factor); // get intensity
+                                          &mdepth_x)*this->outside_factor); // get intensity */
                 /* *(diffalloc<T>::data + offset) =
                         E0_to_intensity(diff::dbl_simpson<T, gtd::complex<T>, decltype(integrand),
                                 decltype(ap->gfunc()), decltype(ap->hfunc())>
                                          (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
                                           500, 500)*this->outside_factor); // get intensity */
+                *(diffalloc<T>::data + offset) =
+                        E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
+                                decltype(ap->gfunc()), decltype(ap->hfunc())>
+                                         (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
+                                          abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                          &mdepth_x)*this->outside_factor); // get intensity
                 offset = counter++;
             }
         }
