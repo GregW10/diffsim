@@ -113,12 +113,12 @@ int start_sim(gtd::parser &parser) {
         fprintf(stderr, "Error: intensity of incident light must be positive.\n");
         return 1;
     }
-    vals.abstol_y = parser.get_arg("--abstol_y", (T) DEF_ATY);
+    vals.abstol_y = parser.get_arg("--atol_y", (T) DEF_ATY);
     if (vals.abstol_y <= 0) {
         fprintf(stderr, "Error: absolute y-tolerance must be positive.\n");
         return 1;
     }
-    vals.reltol_y = parser.get_arg("--reltol_y", (T) DEF_RTY);
+    vals.reltol_y = parser.get_arg("--rtol_y", (T) DEF_RTY);
     if (vals.reltol_y <= 0) {
         fprintf(stderr, "Error: relative y-tolerance must be positive.\n");
         return 1;
@@ -128,12 +128,12 @@ int start_sim(gtd::parser &parser) {
         fprintf(stderr, "Error: periodic y-tolerance must be positive.\n");
         return 1;
     } */
-    vals.abstol_x = parser.get_arg("--abstol_x", (T) DEF_ATX);
+    vals.abstol_x = parser.get_arg("--atol_x", (T) DEF_ATX);
     if (vals.abstol_x <= 0) {
         fprintf(stderr, "Error: absolute x-tolerance must be positive.\n");
         return 1;
     }
-    vals.reltol_x = parser.get_arg("--reltol_x", (T) DEF_RTX);
+    vals.reltol_x = parser.get_arg("--rtol_x", (T) DEF_RTX);
     if (vals.reltol_x <= 0) {
         fprintf(stderr, "Error: relative x-tolerance must be positive.\n");
         return 1;
@@ -257,6 +257,9 @@ int start_sim(gtd::parser &parser) {
     // printf("CUDA kernel grid:");
     // gtd::print_array<unsigned int>((unsigned int*) &grid, 3);
 #endif
+    if constexpr (verbose)
+        printf("Actual max. x-recursion depth = %" PRIu64 "\nActual max. y-recursion depth = %" PRIu64 "\n",
+            sim.max_xrecdepth(), sim.max_yrecdepth());
     if (!no_dffr) {
         if constexpr (verbose)
             printf("Simulation completed, generating DFFR...\n");

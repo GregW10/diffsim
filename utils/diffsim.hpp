@@ -312,13 +312,43 @@ namespace diff {
         gtd::complex<T> outside_factor;
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
         bool ap_ff = false; // aperture from file - used to discern whether the aperture was loaded from a file or not
+        uint64_t midx = diffalloc<T>::nw/2;
+        uint64_t midy = diffalloc<T>::nh/2;
     private:
 #ifndef __CUDACC__
         std::atomic<uint64_t> counter{};
+        std::mutex mutex;
+        uint64_t max_xdepth{(uint64_t) -1};
+        uint64_t max_ydepth{(uint64_t) -1};
 #endif
         HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
-            vec->x = x0 + i*pw;
-            vec->y = y0 + j*ph;
+            // vec->x = x0 + i*pw;
+            // vec->y = y0 + j*ph;
+            // uint64_t midx = diffalloc<T>::nw/2;
+            // uint64_t midy = diffalloc<T>::nh/2;
+            if (!(diffalloc<T>::nw % 2)) {
+                if (i >= midx)
+                    vec->x = (i - midx + 0.5l)*pw;
+                else
+                    vec->x = -((midx - i - 0.5l)*pw);
+            } else {
+                if (i >= midx)
+                    vec->x = (i - midx)*pw;
+                else
+                    vec->x = -((midx - i)*pw);
+            }
+            if (!(diffalloc<T>::nh % 2)) {
+                if (j >= midx)
+                    vec->y = (j - midy + 0.5l)*ph;
+                else
+                    vec->y = -((midy - j - 0.5l)*ph);
+            } else {
+                if (j >= midx)
+                    vec->y = (j - midy)*ph;
+                else
+                    vec->y = -((midy - j)*ph);
+            }
+
         }
 #ifndef __CUDACC__
         void diffract_thread(T abstol_y,
@@ -341,6 +371,10 @@ namespace diff {
                 return ((std::cos(kr) + gtd::complex<T>::imunit*std::sin(kr))/
                        (rsq))*(1 + gtd::complex<T>::imunit/kr); // eliminate sine
             };
+            const uint64_t mdx = mdepth_x;
+            const uint64_t mdy = mdepth_y;
+            uint64_t maxx = 0;
+            uint64_t maxy = 0;
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 this->pix_to_pos(&pos, c.x, c.y);
@@ -361,8 +395,19 @@ namespace diff {
                                          (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
                                           abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                           &mdepth_x)*this->outside_factor); // get intensity
+                if (mdepth_x > maxx)
+                    maxx = mdepth_x;
+                if (mdepth_y > maxy)
+                    maxy = mdepth_y;
+                mdepth_x = mdx;
+                mdepth_y = mdy;
                 offset = counter++;
             }
+            std::lock_guard<std::mutex> lock{mutex};
+            if (maxx > max_xdepth)
+                max_xdepth = maxx;
+            if (maxy > max_ydepth)
+                max_ydepth = maxy;
         }
         void prog_thread(unsigned ptime) {
             char _c = isatty(STDOUT_FILENO) ? '\r' : '\n';
@@ -422,6 +467,12 @@ namespace diff {
         explicit diffsim(const char *path, bool just_info = true) {
             this->from_dffr(path, just_info);
         }
+        uint64_t max_xrecdepth() const noexcept {
+            return this->max_xdepth;
+        }
+        uint64_t max_yrecdepth() const noexcept {
+            return this->max_ydepth;
+        }
 #ifndef __CUDACC__
         void diffract(T abstol_y = 0.0625l/(1024.0l*1024.0l),
                       T reltol_y = 0.0625l/(1024.0l*1024.0l),
@@ -435,6 +486,8 @@ namespace diff {
                       unsigned ptime = 1) {
             // be able to return max_depth overall
             static const unsigned int numt = std::thread::hardware_concurrency();
+            max_xdepth = 0;
+            max_ydepth = 0;
             std::vector<std::thread> threads;
             unsigned int _i = num_threads ? num_threads : numt;
             threads.reserve(_i);

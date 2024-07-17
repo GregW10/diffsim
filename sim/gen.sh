@@ -14,7 +14,12 @@ lam_sigln="0.5"
 apl_muln="0.005"
 apl_sigln="0.5"
 
-cutoff_time=600 # maximum time given for a pattern to be generated (in seconds)
+base_nlog="-8"
+base_zd="0.00001"
+base_zlog=$(echo "l($base_zd)/l(10)" | bc -l)
+base_zdiff=$(echo "$base_nlog - $base_zlog" | bc -l)
+
+cutoff_time=6000 # maximum time given for a pattern to be generated (in seconds)
 
 num=10000 # number of patterns to generate
 digs=$(echo "val=l($num - 1)/l(10);scale=0;val/1 + 1;" | bc -l) # number of digits in file name
