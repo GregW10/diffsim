@@ -1,5 +1,6 @@
 #include "../utils/diffimg.hpp"
 #include "../glib/misc/gregparse.hpp"
+#include <chrono>
 
 #define DEF_NX   500
 #define DEF_NY   500
@@ -224,16 +225,36 @@ int start_sim(gtd::parser &parser) {
     diff::rectangle<T> ap{vals.xa, vals.xb, vals.ya, vals.yb};
 #ifndef __CUDACC__
     diff::diffimg<T> sim{vals.lam, &ap, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
-    sim.diffract(vals.abstol_y,
-                 vals.reltol_y,
-                 vals.ptol_y,
-                 vals.mdepth_y,
-                 vals.abstol_x,
-                 vals.reltol_x,
-                 vals.ptol_x,
-                 vals.mdepth_x,
-                 vals.threads,
-                 vals.ptime);
+    if constexpr (verbose) {
+        std::chrono::time_point<std::chrono::high_resolution_clock> start =
+            std::chrono::high_resolution_clock::now();
+        sim.diffract(vals.abstol_y,
+                     vals.reltol_y,
+                     vals.ptol_y,
+                     vals.mdepth_y,
+                     vals.abstol_x,
+                     vals.reltol_x,
+                     vals.ptol_x,
+                     vals.mdepth_x,
+                     vals.threads,
+                     vals.ptime);
+        std::chrono::time_point<std::chrono::high_resolution_clock> end =
+            std::chrono::high_resolution_clock::now();
+        std::cout << "Time taken = "
+                  << ((long double) std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count())/BILLION
+                  << " s\n";
+    } else {
+        sim.diffract(vals.abstol_y,
+                     vals.reltol_y,
+                     vals.ptol_y,
+                     vals.mdepth_y,
+                     vals.abstol_x,
+                     vals.reltol_x,
+                     vals.ptol_x,
+                     vals.mdepth_x,
+                     vals.threads,
+                     vals.ptime);
+    }
 #else
     diff::rectangle<T> *ap_gpu;
     CUDA_ERROR(cudaMalloc(&ap_gpu, sizeof(diff::rectangle<T>)));
@@ -242,16 +263,36 @@ int start_sim(gtd::parser &parser) {
     diff::diffimg<T> sim{vals.lam, &ap, ap_gpu, vals.z, vals.w, vals.l, vals.I0, vals.nx, vals.ny};
     dim3 block;
     dim3 grid;
-    sim.diffract(vals.abstol_y,
-                 vals.reltol_y,
-                 vals.ptol_y,
-                 vals.mdepth_y,
-                 vals.abstol_x,
-                 vals.reltol_x,
-                 vals.ptol_x,
-                 vals.mdepth_x,
-                 &block,
-                 &grid);
+    if constexpr (verbose) {
+        std::chrono::time_point<std::chrono::high_resolution_clock> start =
+            std::chrono::high_resolution_clock::now();
+        sim.diffract(vals.abstol_y,
+                     vals.reltol_y,
+                     vals.ptol_y,
+                     vals.mdepth_y,
+                     vals.abstol_x,
+                     vals.reltol_x,
+                     vals.ptol_x,
+                     vals.mdepth_x,
+                     &block,
+                     &grid);
+        std::chrono::time_point<std::chrono::high_resolution_clock> end =
+            std::chrono::high_resolution_clock::now();
+        std::cout << "Time taken = "
+                  << ((long double) std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count())/BILLION
+                  << " s\n";
+    } else {
+        sim.diffract(vals.abstol_y,
+                     vals.reltol_y,
+                     vals.ptol_y,
+                     vals.mdepth_y,
+                     vals.abstol_x,
+                     vals.reltol_x,
+                     vals.ptol_x,
+                     vals.mdepth_x,
+                     &block,
+                     &grid);
+    }
     // printf("CUDA kernel block:");
     // gtd::print_array<unsigned int>((unsigned int*) &block, 3);
     // printf("CUDA kernel grid:");

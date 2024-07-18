@@ -1079,8 +1079,9 @@ namespace diff {
                                    const T &reltol,
                                    T ptol,
                                    uint64_t *mdepth,
-                                   const uint64_t &maxd,
-                                   uint64_t cdepth) {
+                                   uint64_t &maxd,
+                                   uint64_t cdepth,
+                                   bool &reached) {
         if (cdepth == maxd) {
             if (cdepth > *mdepth)
                 *mdepth = cdepth;
@@ -1089,6 +1090,13 @@ namespace diff {
         T dxo12 = dxo6/2;
         T m1 = m2 - dxo4;
         T m3 = m2 + dxo4;
+        if (!reached && (a == m1 || m1 == m2 || m2 == m3 || m3 == b)) {
+            if (cdepth > *mdepth)
+                *mdepth = cdepth;
+            maxd = cdepth;
+            reached = true;
+            return dxo12*(fa + 4*f(m1) + 2*fm2 + 4*f(m3) + fb);
+        }
         R fm1 = f(m1);
         R fm3 = f(m3);
         R faPfb = fa + fb;
@@ -1102,9 +1110,9 @@ namespace diff {
             ptol /= 4;
             ++cdepth;
             return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12,
-                                    abstol, reltol, ptol, mdepth, maxd, cdepth) +
+                                    abstol, reltol, ptol, mdepth, maxd, cdepth, reached) +
                    simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12,
-                                    abstol, reltol, ptol, mdepth, maxd, cdepth);
+                                    abstol, reltol, ptol, mdepth, maxd, cdepth, reached);
         }
         if (cdepth > *mdepth)
             *mdepth = cdepth;
@@ -1126,6 +1134,12 @@ namespace diff {
         T dxo12 = dxo6/2;
         T m1 = m2 - dxo4;
         T m3 = m2 + dxo4;
+        if (a == m1 || m1 == m2 || m2 == m3 || m3 == b) {
+            // if (cdepth > *mdepth)
+            //     *mdepth = cdepth;
+            // maxd = cdepth;
+            return dxo12*(fa + 4*f(m1) + 2*fm2 + 4*f(m3) + fb);
+        }
         R fm1 = f(m1);
         R fm3 = f(m3);
         R faPfb = fa + fb;
@@ -1164,8 +1178,10 @@ namespace diff {
         R fm3 = f(m3);
         R fb = f(b);
         R faPfb = fa + fb;
-        R estimate = dxo6*(faPfb + 4*fm2);
         R ires = dxo12*(faPfb + 4*fm1 + 2*fm2 + 4*fm3);
+        if (a == m1 || m1 == m2 || m2 == m3 || m3 == b)
+            return ires;
+        R estimate = dxo6*(faPfb + 4*fm2);
         T absval;
         if (mdepth) {
             if (!*mdepth)
@@ -1177,8 +1193,11 @@ namespace diff {
                 dxo4 /= 2;
                 abstol /= 2;
                 ptol /= 4;
-                return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1)+
-                       simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1);
+                bool reached = false;
+                return simpquad_recurse(f, a, m1, m2, fa, fm1, fm2, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1,
+                                        reached) +
+                       simpquad_recurse(f, m2, m3, b, fm2, fm3, fb, dxo4, dxo12, abstol, reltol, ptol, mdepth, maxd, 1,
+                                        reached);
             }
         }
         else {
@@ -1210,18 +1229,18 @@ namespace diff {
                                       const T &reltol_y,
                                       T ptol_y,
                                       uint64_t *mdepth_y,
-                                      const uint64_t &maxd_y,
+                                      uint64_t &maxd_y,
                                       uint64_t cdepth_y,
                                       const T &abstol_x,
                                       const T &reltol_x,
                                       const T &ptol_x,
                                       uint64_t *mdepth_x,
-                                      const uint64_t &maxd_x) {
-        uint64_t maxx;
-        T dyo12 = dyo6/2;
+                                      const uint64_t &maxd_x,
+                                      bool &reached) {
         T ym1 = ym2 - dyo4;
         T ym3 = ym2 + dyo4;
-        maxx = maxd_x;
+        T dyo12 = dyo6/2;
+        uint64_t maxx = maxd_x;
         y = ym1;
         R fym1 = simpqr<T, R, L>(l, gfunc(ym1), hfunc(ym1), abstol_x, reltol_x, ptol_x, &maxx);
         if (maxx > *mdepth_x)
@@ -1238,6 +1257,13 @@ namespace diff {
                 *mdepth_y = cdepth_y;
             return ires;
         }
+        if (!reached && (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)) {
+            if (cdepth_y > *mdepth_y)
+                *mdepth_y = cdepth_y;
+            maxd_y = cdepth_y;
+            reached = true;
+            return ires;
+        }
         R estimate = dyo6*(fyaPfyb + 4*fym2);
         T absval;
         if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
@@ -1248,10 +1274,10 @@ namespace diff {
             ++cdepth_y;
             return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
                                        abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
-                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x, reached) +
                    simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
                                        abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
-                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+                                       abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x, reached);
         }
         if (cdepth_y > *mdepth_y)
             *mdepth_y = cdepth_y;
@@ -1274,11 +1300,12 @@ namespace diff {
                                       const T &reltol_y,
                                       T ptol_y,
                                       uint64_t *mdepth_y,
-                                      const uint64_t &maxd_y,
+                                      uint64_t &maxd_y,
                                       uint64_t cdepth_y,
                                       const T &abstol_x,
                                       const T &reltol_x,
-                                      const T &ptol_x) {
+                                      const T &ptol_x,
+                                      bool &reached) {
         T dyo12 = dyo6/2;
         T ym1 = ym2 - dyo4;
         T ym3 = ym2 + dyo4;
@@ -1293,6 +1320,13 @@ namespace diff {
                 *mdepth_y = cdepth_y;
             return ires;
         }
+        if (!reached && (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)) {
+            if (cdepth_y > *mdepth_y)
+                *mdepth_y = cdepth_y;
+            maxd_y = cdepth_y;
+            reached = true;
+            return ires;
+        }
         R estimate = dyo6*(fyaPfyb + 4*fym2);
         T absval;
         if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
@@ -1303,10 +1337,10 @@ namespace diff {
             ++cdepth_y;
             return simpdblquad_recurse(l, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
                                        abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
-                                       abstol_x, reltol_x, ptol_x) +
+                                       abstol_x, reltol_x, ptol_x, reached) +
                    simpdblquad_recurse(l, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
                                        abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, cdepth_y,
-                                       abstol_x, reltol_x, ptol_x);
+                                       abstol_x, reltol_x, ptol_x, reached);
         }
         if (cdepth_y > *mdepth_y)
             *mdepth_y = cdepth_y;
@@ -1348,8 +1382,10 @@ namespace diff {
         if (maxx > *mdepth_x)
             *mdepth_x = maxx;
         R fyaPfyb = fya + fyb;
-        R estimate = dyo6*(fyaPfyb + 4*fym2);
         R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        if (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)
+            return ires;
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
         T absval;
         if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
             ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
@@ -1392,8 +1428,10 @@ namespace diff {
         y = ym3;
         R fym3 = simpqr<T, R, L>(l, gfunc(ym3), hfunc(ym3), abstol_x, reltol_x, ptol_x, nullptr);
         R fyaPfyb = fya + fyb;
-        R estimate = dyo6*(fyaPfyb + 4*fym2);
         R ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+        if (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb)
+            return ires;
+        R estimate = dyo6*(fyaPfyb + 4*fym2);
         T absval;
         if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
             ((absval = gtd::abs(ires - estimate)) > abstol_y && absval > gtd::abs(ires*reltol_y))) {
@@ -1471,8 +1509,13 @@ namespace diff {
                 *mdepth_x = maxx;
             maxx = maxd_x;
             R fyaPfyb = fya + fyb;
-            estimate = dyo6*(fyaPfyb + 4*fym2);
             ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+            if (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb) {
+                if (mdepth_y)
+                    *mdepth_y = 0;
+                return ires;
+            }
+            estimate = dyo6*(fyaPfyb + 4*fym2);
             if (mdepth_y) {
                 if (!*mdepth_y)
                     return ires;
@@ -1483,12 +1526,13 @@ namespace diff {
                     dyo4 /= 2;
                     abstol_y /= 2;
                     ptol_y /= 4;
+                    bool reached = false;
                     return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
                                                abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
-                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x) +
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x, reached) +
                            simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
                                                abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
-                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x);
+                                               abstol_x, reltol_x, ptol_x, mdepth_x, maxd_x, reached);
                 }
             } else {
                 if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
@@ -1517,8 +1561,13 @@ namespace diff {
             y = yb;
             fyb = simpqr<T, R, lam_t>(fy_lam, gfunc(yb), hfunc(yb), abstol_x, reltol_x, ptol_x, nullptr);
             R fyaPfyb = fya + fyb;
-            estimate = dyo6*(fyaPfyb + 4*fym2);
             ires = dyo12*(fyaPfyb + 4*fym1 + 2*fym2 + 4*fym3);
+            if (ya == ym1 || ym1 == ym2 || ym2 == ym3 || ym3 == yb) {
+                if (mdepth_y)
+                    *mdepth_y = 0;
+                return ires;
+            }
+            estimate = dyo6*(fyaPfyb + 4*fym2);
             if (mdepth_y) {
                 if (!*mdepth_y)
                     return ires;
@@ -1529,12 +1578,13 @@ namespace diff {
                     dyo4 /= 2;
                     abstol_y /= 2;
                     ptol_y /= 4;
+                    bool reached = false;
                     return simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ya, ym1, ym2, fya, fym1, fym2, dyo4, dyo12,
                                                abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
-                                               abstol_x, reltol_x, ptol_x) +
+                                               abstol_x, reltol_x, ptol_x, reached) +
                            simpdblquad_recurse(fy_lam, y, gfunc, hfunc, ym2, ym3, yb, fym2, fym3, fyb, dyo4, dyo12,
                                                abstol_y, reltol_y, ptol_y, mdepth_y, maxd_y, 1,
-                                               abstol_x, reltol_x, ptol_x);
+                                               abstol_x, reltol_x, ptol_x, reached);
                 }
             } else {
                 if (collinear(ya, ym1, ym2, ym3, yb, fya, fym1, fym2, fym3, fyb, ptol_y) ||
