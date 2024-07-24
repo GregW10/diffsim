@@ -22,13 +22,24 @@ z_b=$(echo "e($l_b*l(10))" | bc -l)
 min_tol=$(echo "e($l_max*l(10))" | bc -l)
 
 tol_cut="0.000000000001" # cut-off tolerance below which the simulation switches to using `long double` values
+# tol_cutlog=$(echo "l($tol_cut)/l(10)" | bc -l)
+
+lams="-9.5"
+# lamb=$(echo "$lams + l($2)/l(10) - $l_b" | bc -l)
 
 gen_lt() {
-  if [ $(echo "$1 <= $z_b" | bc -l) == 1 ]; then
+  logz=$(echo "l($1)/l(10)" | bc -l)
+  lamdiff=$(echo "$lams + l($2)/l(10) - $logz" | bc -l)
+  if [ $(echo "$1 <= $z_b" | bc -l) == 1 ] && [ $(echo "$lamdiff >= $l_max" | bc -l) == 1 ]; then
     echo $min_tol
     exit 0
   fi
-  echo "e(($l_max + 1.5*($l_b - l($1)/l(10)))*l(10))" | bc -l
+  zdiff=$(echo "$l_max + 1.5*($l_b - $logz)" | bc -l)
+  if [ $(echo "$zdiff <= $lamdiff" | bc -l) == 1 ]; then
+    echo "e($zdiff*l(10))" | bc -l
+  else
+    echo "e($lamdiff*l(10))" | bc -l
+  fi
   exit 0
 }
 
@@ -38,9 +49,11 @@ base_zlog=$(echo "l($base_zd)/l(10)" | bc -l)
 base_zdiff=$(echo "$base_nlog - $base_zlog" | bc -l)
 
 cutoff_time=3600 # maximum time given for a pattern to be generated (in seconds)
+cutoff_sleep=3
+min_prog=$(echo "($cutoff_sleep/$cutoff_time)*100.0" | bc -l)
 
-num=10000 # number of patterns to generate
-digs=$(echo "val=l($num - 1)/l(10);scale=0;val/1 + 1;" | bc -l) # number of digits in file name
+num_pats=10000 # number of patterns to generate
+digs=$(echo "val=l($num_pats - 1)/l(10);scale=0;val/1 + 1;" | bc -l) # number of digits in file name
 counter=1
 
 gen_pat() {
@@ -52,11 +65,25 @@ gen_pat() {
   fi
   timeout $cutoff_time dffrcc --nx $nx --ny $ny --lam $1 --xa $2 --xb $3 --ya $2 --yb $3 --z $4 --w $5 --l $5 --I0 $I0 \
   --ptol_x $ptol --ptol_y $ptol --atol_x $6 --atol_y $6 --rtol_x $6 --rtol_y $6 -f $ftype \
-  --dffr $pref.dffr --bmp $pref.bmp --ptime 0 -v --cmap grayscale > log$pref 2>&1
-  return $?
+  --dffr $pref.dffr --bmp $pref.bmp --ptime 1 -v --cmap grayscale > log$pref 2>&1 &
+  pid=$!
+  sleep $cutoff_sleep
+  if ! [ -z "$(grep "100.00% complete." log$pref)" ]; then
+    return 0
+  fi
+  num=$(tail -1 log$pref | awk -F '%' '{ print $1 }')
+  echo "num: $num"
+  if [ $(echo "$num >= $min_prog" | bc -l) == 1 ]; then
+    wait $pid
+    return $?
+  fi
+  kill $pid
+  echo "The simulation with the following parameters would have taken approx. $(printf "%.2Lf" $(echo "$cutoff_sleep*(100/$num)" | bc -l)) s to complete:"
+  cat log$pref && echo
+  return 1
 }
 
-while [ $counter -le $num ]; do
+while [ $counter -le $num_pats ]; do
   lam=$(logn $lam_muln $lam_sigln)
   apl=$(logn $apl_muln $apl_sigln)
   if [ $(echo "$lam > $apl" | bc -l) == 1 ] || [ $(echo "$lam < $apl/20" | bc -l) == 1 ]; then
@@ -68,11 +95,10 @@ while [ $counter -le $num ]; do
     continue;
   fi
   xyb=$(echo "$apl/2" | bc -l) # upper x- and y-limits of the aperture (since the aperture is square)
-  tol=$(gen_lt $zd)
+  tol=$(gen_lt $zd $lam)
   if ! gen_pat $lam "-$xyb" $xyb $zd $wl $tol; then
     continue;
   fi
-  # echo "Tolerance: $tol"
   echo -en "Pattern $counter generated with:\n\tz-dist: $zd m\n\tap_len: $apl m\n\tlambda: $lam m\n\t   tol: 0$tol\n\n"
   counter=$((counter + 1))
 done
