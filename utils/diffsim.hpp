@@ -723,10 +723,12 @@ namespace diff {
             this->E0 = intensity_to_E0(info.I_0);
             this->pw = info.w/info.nx;
             this->ph = info.l/info.ny;
-            this->x0 = 0.5*(this->pw - info.w);
-            this->y0 = 0.5*(this->ph - info.l);
+            // this->x0 = 0.5*(this->pw - info.w);
+            // this->y0 = 0.5*(this->ph - info.l);
             this->zdsq = info.zd*info.zd;
             this->outside_factor = (gtd::complex<T>::m_imunit*info.zd*this->E0)/info.lam;
+            this->midx = info.nx/2;
+            this->midy = info.ny/2;
             return psize;
         }
         ~diffsim() {
