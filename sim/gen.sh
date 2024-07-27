@@ -72,7 +72,7 @@ gen_pat() {
     return 0
   fi
   num=$(tail -1 log$pref | awk -F '%' '{ print $1 }')
-  echo "num: $num"
+  # echo "num: $num"
   if [ $(echo "$num >= $min_prog" | bc -l) == 1 ]; then
     wait $pid
     return $?

@@ -111,8 +111,8 @@ namespace diff {
                                     T _E0,
                                     T _pw,
                                     T _ph,
-                                    T _x0,
-                                    T _y0,
+                                    uint64_t midx,
+                                    uint64_t midy,
                                     T _zdsq,
                                     gtd::complex<T> _outside_factor,
                                     // F _gfunc,
@@ -176,8 +176,8 @@ namespace diff {
                                                U _E0,
                                                U _pw,
                                                U _ph,
-                                               U _x0,
-                                               U _y0,
+                                               uint64_t midx,
+                                               uint64_t midy,
                                                U _zdsq,
                                                gtd::complex<U> _outside_factor,
                                                // F _gfunc,
@@ -306,8 +306,8 @@ namespace diff {
         T E0; // electric field amplitude of light incident on aperture (V/m)
         T pw; // pixel width
         T ph; // pixel height
-        T x0;
-        T y0;
+        // T x0;
+        // T y0;
         T zdsq;
         gtd::complex<T> outside_factor;
         static constexpr T eps0co2 = 0.5l*PERMITTIVITY*LIGHT_SPEED;
@@ -318,14 +318,11 @@ namespace diff {
 #ifndef __CUDACC__
         std::atomic<uint64_t> counter{};
         std::mutex mutex;
+#endif
         uint64_t max_xdepth{(uint64_t) -1};
         uint64_t max_ydepth{(uint64_t) -1};
-#endif
         HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
-            // vec->x = x0 + i*pw;
-            // vec->y = y0 + j*ph;
-            // uint64_t midx = diffalloc<T>::nw/2;
-            // uint64_t midy = diffalloc<T>::nh/2;
+            // I have taken this approach (rather than previously starting from (x_0,y_0) to ensure symmetry
             if (!(diffalloc<T>::nw % 2)) {
                 if (i >= midx)
                     vec->x = (i - midx + 0.5l)*pw;
@@ -338,17 +335,16 @@ namespace diff {
                     vec->x = -((midx - i)*pw);
             }
             if (!(diffalloc<T>::nh % 2)) {
-                if (j >= midx)
+                if (j >= midy)
                     vec->y = (j - midy + 0.5l)*ph;
                 else
                     vec->y = -((midy - j - 0.5l)*ph);
             } else {
-                if (j >= midx)
+                if (j >= midy)
                     vec->y = (j - midy)*ph;
                 else
                     vec->y = -((midy - j)*ph);
             }
-
         }
 #ifndef __CUDACC__
         void diffract_thread(T abstol_y,
@@ -378,17 +374,6 @@ namespace diff {
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
                 this->pix_to_pos(&pos, c.x, c.y);
-                /* *(diffalloc<T>::data + offset) =
-                        E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
-                                decltype(ap->gfunc()), decltype(ap->hfunc())>
-                                         (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
-                                          abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
-                                          &mdepth_x)*this->outside_factor); // get intensity */
-                /* *(diffalloc<T>::data + offset) =
-                        E0_to_intensity(diff::dbl_simpson<T, gtd::complex<T>, decltype(integrand),
-                                decltype(ap->gfunc()), decltype(ap->hfunc())>
-                                         (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
-                                          500, 500)*this->outside_factor); // get intensity */
                 *(diffalloc<T>::data + offset) =
                         E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
                                 decltype(ap->gfunc()), decltype(ap->hfunc())>
@@ -449,8 +434,8 @@ namespace diff {
         E0{intensity_to_E0(incident_light_intensity)},
         pw{((T) dttr_width)/dttr_width_px},
         ph{((T) dttr_length)/dttr_length_px},
-        x0{(T) (0.5*(pw - xdttr))},
-        y0{(T) (0.5*(ph - ydttr))},
+        // x0{(T) (0.5*(pw - xdttr))},
+        // y0{(T) (0.5*(ph - ydttr))},
         zdsq{dttr_dist*dttr_dist},
         outside_factor{(gtd::complex<T>::m_imunit*zdist*E0)/lambda}
         {
@@ -486,8 +471,8 @@ namespace diff {
                       unsigned ptime = 1) {
             // be able to return max_depth overall
             static const unsigned int numt = std::thread::hardware_concurrency();
-            max_xdepth = 0;
-            max_ydepth = 0;
+            this->max_xdepth = 0;
+            this->max_ydepth = 0;
             std::vector<std::thread> threads;
             unsigned int _i = num_threads ? num_threads : numt;
             threads.reserve(_i);
@@ -510,7 +495,8 @@ namespace diff {
                       T ptol_x = 1/(1024.0l*1024.0l*1024.0l),
                       uint64_t mdepth_x = def_mdepth,
                       dim3 *block_out = nullptr,
-                      dim3 *grid_out = nullptr) {
+                      dim3 *grid_out = nullptr,
+                      size_t *stack_size = nullptr) {
             int device;
             CUDA_ERROR(cudaGetDevice(&device));
             cudaDeviceProp props;
@@ -572,37 +558,21 @@ namespace diff {
                 *block_out = block;
             if (grid_out)
                 *grid_out = grid;
-            /* alignas(diffsim<T>) char sim_cpy_cpu[sizeof(diffsim<T>)];
-            gtd::memcopy(sim_cpy_cpu, this, sizeof(diffsim<T>));
-            diffsim<T> *sim_cpy_cpu_ptr = (diffsim<T>*) &sim_cpy_cpu;
-            diffsim<T> *sim_cpy_gpu_ptr{};
-            CUDA_ERROR(cudaMalloc(&(sim_cpy_cpu_ptr->ap), this->ap->obj_size()));
-            CUDA_ERROR(cudaMemcpy((void*) sim_cpy_cpu_ptr->ap, (void*) this->ap, this->ap->obj_size(), cudaMemcpyHostToDevice));
-            CUDA_ERROR(cudaMalloc(&sim_cpy_gpu_ptr, sizeof(diffsim<T>)));
-            CUDA_ERROR(cudaMemcpy(sim_cpy_gpu_ptr, sim_cpy_cpu, sizeof(diffsim<T>), cudaMemcpyHostToDevice));
-            gtd::print_array<unsigned int>((unsigned int*) &block, 3);
-            gtd::print_array<unsigned int>((unsigned int*) &grid, 3);
-            cudaDeviceSynchronize();
-            sleep(10);
-            diffract_kernel<<<grid,block>>>(sim_cpy_gpu_ptr,
-                                            abstol_y,
-                                            reltol_y,
-                                            ptol_y,
-                                            mdepth_y,
-                                            abstol_x,
-                                            reltol_x,
-                                            ptol_x,
-                                            mdepth_x);
-            CUDA_ERROR(cudaDeviceSynchronize());
-            CUDA_ERROR(cudaFree((void*) sim_cpy_cpu_ptr->ap));
-            CUDA_ERROR(cudaFree(sim_cpy_gpu_ptr));
-            CUDA_ERROR(cudaMemcpy(this->data, this->gdat, diffalloc<T>::nb, cudaMemcpyDeviceToHost)); */
-            // printf("Antes del kernel.\n");
-            // sleep(10);
-            // block.x = 16;
-            // block.y = 16;
-            // grid.x = 64;
-            // printf("Max block size: %d, max grid size: %d\n", b_size, g_size);
+            // size_t curr_stack_lim;
+            // size_t dbl_stack_lim;
+            // cudaError_t err;
+            // do {
+            //     CUDA_ERROR(cudaDeviceGetLimit(&curr_stack_lim, cudaLimitStackSize));
+            //     dbl_stack_lim = 2*curr_stack_lim;
+            // } while ((err = cudaDeviceSetLimit(cudaLimitStackSize, dbl_stack_lim)) == cudaSuccess &&
+            //          (dbl_stack_lim = 2*curr_stack_lim) != curr_stack_lim);
+            // if (stack_size)
+            //     CUDA_ERROR(cudaDeviceGetLimit(stack_size, cudaLimitStackSize)); // ensure correct limit is returned
+            // std::cout << "Stack lim: " << curr_stack_lim << std::endl;
+            size_t temp_stack_size = 65'536; // will remove the hard-coding, must calculate based on max. depths
+            cudaDeviceSetLimit(cudaLimitStackSize, temp_stack_size);//16384);
+            if (stack_size)
+                *stack_size = temp_stack_size;
             diffract_kernel<T>//, decltype(this->ap->gfunc())>
                            <<<grid,block>>>(diffalloc<T>::nw,
                                             diffalloc<T>::nh,
@@ -621,8 +591,8 @@ namespace diff {
                                             this->E0,
                                             this->pw,
                                             this->ph,
-                                            this->x0,
-                                            this->y0,
+                                            this->midx,
+                                            this->midy,
                                             this->zdsq,
                                             this->outside_factor,
                                             // this->ap->gfunc(),
@@ -783,8 +753,8 @@ namespace diff {
                                                U _E0,
                                                U _pw,
                                                U _ph,
-                                               U _x0,
-                                               U _y0,
+                                               uint64_t _midx,
+                                               uint64_t _midy,
                                                U _zdsq,
                                                gtd::complex<U> _outside_factor,
                                                // F _gfunc,
@@ -818,8 +788,8 @@ namespace diff {
                                     T _E0,
                                     T _pw,
                                     T _ph,
-                                    T _x0,
-                                    T _y0,
+                                    uint64_t _midx,
+                                    uint64_t _midy,
                                     T _zdsq,
                                     gtd::complex<T> _outside_factor,
                                     // F _gfunc,
@@ -832,13 +802,9 @@ namespace diff {
                                     T reltol_x,
                                     T ptol_x,
                                     uint64_t mdepth_x) {
-        // printf("Comienzo del kernel.\n");
-        // __syncthreads();
         uint64_t b_id = blockIdx.x + blockIdx.y*gridDim.x + blockIdx.z*gridDim.x*gridDim.y;
         uint64_t t_id = threadIdx.x + threadIdx.y*blockDim.x + threadIdx.z*blockDim.x*blockDim.y;
         uint64_t offset = b_id*(blockDim.x*blockDim.y*blockDim.z) + t_id;
-        // printf("Offset: %" PRIu64 "\n", offset);
-        // __syncthreads();
         if (offset >= _np)
             return;
         vector<T> pos;
@@ -852,35 +818,17 @@ namespace diff {
             return ((std::cos(kr) + _im*std::sin(kr))/
                    (rsq))*(1 + _im/kr); // eliminate sine
         };
-        // c = sim->pix_coords(offset);
         coord c{offset % _nw, offset/_nw};
-        // sim->pix_to_pos(&pos, c.x, c.y);
-        pos.x = _x0 + c.x*_pw;
-        pos.y = _y0 + c.y*_ph;
-        // F g = _gfunc;
-        // F h = _hfunc;
-        // F g{(T) -0.00001};
-        // F h{(T)  0.00001};
-        // printf("Justo antes.\n");
-        // auto _g = [](const T&){return (T) -0.00001;};
-        // auto _h = [](const T&){return (T)  0.00001;};
-        /* *(_gdat + offset) =
-                E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
-                        decltype(g), decltype(h)>
-                                 (integrand, _ap_ya, _ap_yb, g, h,
-                                  abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
-                                  &mdepth_x)*_outside_factor); */
-        // printf("Antes\n");
-        // __syncthreads();
+        pos.x = !(_nw % 2) ? (c.x >= _midx ? (c.x - _midx + 0.5l)*_pw : -((_midx - c.x - 0.5l)*_pw)) :
+                            (c.x >= _midx ? (c.x - _midx)*_pw : -((_midx - c.x)*_pw));
+        pos.y = !(_nh % 2) ? (c.y >= _midy ? (c.y - _midy + 0.5l)*_ph : -((_midy - c.y - 0.5l)*_ph)) :
+                            (c.y >= _midy ? (c.y - _midy)*_ph : -((_midy - c.y)*_ph));
         *(_gdat + offset) =
-                E0_to_intensity(diff::simpdblquad<T, gtd::complex<T>, decltype(integrand),
+                E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
                         decltype(_ap->gfunc()), decltype(_ap->hfunc())>
                                  (integrand, _ap->ya, _ap->yb, _ap->gfunc(), _ap->hfunc(),
                                   abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
                                   &mdepth_x)*_outside_factor);
-        // __syncthreads();
-        // printf("Completado\n");
-        // cudaFree(ap);
     }
 #endif
 }

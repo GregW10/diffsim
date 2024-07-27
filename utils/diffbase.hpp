@@ -1034,8 +1034,8 @@ namespace diff {
         return res; // for completeness, but would never be reached
     }
     template <gtd::numeric T, gtd::numeric R>
-    inline bool collinear(const T &x1, const T &x2, const T &x3, const T &x4, const T &x5,
-                          const R &f1, const R &f2, const R &f3, const R &f4, const R &f5, const T &ptol) {
+    HOST_DEVICE inline bool collinear(const T &x1, const T &x2, const T &x3, const T &x4, const T &x5,
+                                      const R &f1, const R &f2, const R &f3, const R &f4, const R &f5, const T &ptol) {
         if (ptol < 0)
             return false;
         if constexpr (std::same_as<R, gtd::complex<T>>) {
