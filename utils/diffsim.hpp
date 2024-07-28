@@ -314,6 +314,8 @@ namespace diff {
         bool ap_ff = false; // aperture from file - used to discern whether the aperture was loaded from a file or not
         uint64_t midx = diffalloc<T>::nw/2;
         uint64_t midy = diffalloc<T>::nh/2;
+        uint64_t xsym_lim{};
+        uint64_t ysym_lim{};
     private:
 #ifndef __CUDACC__
         std::atomic<uint64_t> counter{};
@@ -373,29 +375,67 @@ namespace diff {
             const uint64_t mdy = mdepth_y;
             uint64_t maxx = 0;
             uint64_t maxy = 0;
-            while (offset < diffalloc<T>::np) {
-                c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
-                if constexpr (square_sym) {
-                    if constexpr (even_x) {
-                        if (c.x >= this->midx) {
-
-                        }
+            if constexpr (square_sym) {
+                /* static uint64_t nw_m1;
+                static uint64_t nh_m1;
+                if (!counter) { // such that only the first thread ever launched accesses the static variables
+                    nw_m1 = diffalloc<T>::nw - 1;
+                    nh_m1 = diffalloc<T>::nh - 1;
+                } */
+                uint64_t nw_m1 = diffalloc<T>::nw - 1;
+                uint64_t nh_m1 = diffalloc<T>::nh - 1;
+                uint64_t high_x;
+                uint64_t high_y;
+                T intensity;
+                c.y = offset/diffalloc<T>::nw;
+                while (c.y < this->ysym_lim) {
+                    c.x = offset % diffalloc<T>::nw;
+                    if (c.x >= this->xsym_lim) {
+                        offset = counter++;
+                        c.y = offset/diffalloc<T>::nw;
+                        continue;
                     }
+                    this->pix_to_pos<even_x, even_y>(&pos, c.x, c.y);
+                    intensity =
+                            E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
+                                    decltype(ap->gfunc()), decltype(ap->hfunc())>
+                                             (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
+                                              abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                              &mdepth_x)*this->outside_factor); // get intensity
+                    if (mdepth_x > maxx)
+                        maxx = mdepth_x;
+                    if (mdepth_y > maxy)
+                        maxy = mdepth_y;
+                    mdepth_x = mdx;
+                    mdepth_y = mdy;
+                    high_x = nw_m1 - c.x;
+                    high_y = nh_m1 - c.y;
+                    // printf("c.x: %zu, c.y: %zu, high_x: %zu, high_y: %zu\n", c.x, c.y, high_x, high_y);
+                    *(diffalloc<T>::data + offset)                                   = intensity;
+                    *(diffalloc<T>::data + diffalloc<T>::pix_offset(high_x, c.y))    = intensity;
+                    *(diffalloc<T>::data + diffalloc<T>::pix_offset(c.x, high_y))    = intensity;
+                    *(diffalloc<T>::data + diffalloc<T>::pix_offset(high_x, high_y)) = intensity;
+                    offset = counter++;
+                    c.y = offset/diffalloc<T>::nw;
                 }
-                this->pix_to_pos<even_x, even_y>(&pos, c.x, c.y);
-                *(diffalloc<T>::data + offset) =
-                        E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
-                                decltype(ap->gfunc()), decltype(ap->hfunc())>
-                                         (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
-                                          abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
-                                          &mdepth_x)*this->outside_factor); // get intensity
-                if (mdepth_x > maxx)
-                    maxx = mdepth_x;
-                if (mdepth_y > maxy)
-                    maxy = mdepth_y;
-                mdepth_x = mdx;
-                mdepth_y = mdy;
-                offset = counter++;
+            } else {
+                while (offset < diffalloc<T>::np) {
+                    c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
+                    this->pix_to_pos<even_x, even_y>(&pos, c.x, c.y);
+                    *(diffalloc<T>::data + offset) =
+                            E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
+                                    decltype(ap->gfunc()), decltype(ap->hfunc())>
+                                             (integrand, ap->ya, ap->yb, ap->gfunc(), ap->hfunc(),
+                                              abstol_y, reltol_y, ptol_y, &mdepth_y, abstol_x, reltol_x, ptol_x,
+                                              &mdepth_x)*this->outside_factor); // get intensity
+                    if (mdepth_x > maxx)
+                        maxx = mdepth_x;
+                    if (mdepth_y > maxy)
+                        maxy = mdepth_y;
+                    mdepth_x = mdx;
+                    mdepth_y = mdy;
+                    offset = counter++;
+                }
             }
             std::lock_guard<std::mutex> lock{mutex};
             if (maxx > max_xdepth)
@@ -485,9 +525,58 @@ namespace diff {
             std::vector<std::thread> threads;
             unsigned int _i = num_threads ? num_threads : numt;
             threads.reserve(_i);
-            while (_i --> 0)
-                threads.emplace_back(&diffsim<T>::diffract_thread, this, abstol_y, reltol_y, ptol_y, mdepth_y,
-                                     abstol_x, reltol_x, ptol_x, mdepth_x);
+            // determine if aperture is rectangular
+            if (typeid(*(this->ap)) == typeid(rectangle<T>)) {
+                if (!(diffalloc<T>::nw % 2)) {
+                    this->xsym_lim = this->midx;
+                    if (!(diffalloc<T>::nh % 2)) {
+                        this->ysym_lim = this->midy;
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<true, true, true>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    } else {
+                        this->ysym_lim = this->midy + 1;
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<true, true, false>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    }
+                } else {
+                    this->xsym_lim = this->midx + 1;
+                    if (!(diffalloc<T>::nh % 2)) {
+                        this->ysym_lim = this->midy;
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<true, false, true>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    } else {
+                        this->ysym_lim = this->midy + 1;
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<true, false, false>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    }
+                }
+            } else {
+                if (!(diffalloc<T>::nw % 2)) {
+                    if (!(diffalloc<T>::nh % 2)) {
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<false, true, true>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    } else {
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<false, true, false>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    }
+                } else {
+                    if (!(diffalloc<T>::nh % 2)) {
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<false, false, true>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    } else {
+                        while (_i --> 0)
+                            threads.emplace_back(&diffsim<T>::diffract_thread<false, false, false>, this, abstol_y,
+                                                 reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
+                    }
+                }
+            }
             if (ptime)
                 std::thread{&diffsim<T>::prog_thread, this, ptime}.join();
             for (std::thread &t : threads)
