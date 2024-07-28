@@ -314,6 +314,10 @@ namespace diff {
         bool ap_ff = false; // aperture from file - used to discern whether the aperture was loaded from a file or not
         uint64_t midx = diffalloc<T>::nw/2;
         uint64_t midy = diffalloc<T>::nh/2;
+        long double midx_m_0p5 = midx - 0.5l;
+        // long double midx_p_0p5 = midx + 0.5l;
+        long double midy_m_0p5 = midy - 0.5l;
+        // long double midy_p_0p5 = midy + 0.5l;
         uint64_t xsym_lim{};
         uint64_t ysym_lim{};
     private:
@@ -326,28 +330,14 @@ namespace diff {
         template <bool even_x, bool even_y>
         HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
             // I have taken this approach (rather than previously starting from (x_0,y_0) to ensure symmetry
-            if constexpr (even_x) {
-                if (i >= midx)
-                    vec->x = (i - midx + 0.5l)*pw;
-                else
-                    vec->x = -((midx - i - 0.5l)*pw);
-            } else {
-                if (i >= midx)
-                    vec->x = (i - midx)*pw;
-                else
-                    vec->x = -((midx - i)*pw);
-            }
-            if constexpr (even_y) {
-                if (j >= midy)
-                    vec->y = (j - midy + 0.5l)*ph;
-                else
-                    vec->y = -((midy - j - 0.5l)*ph);
-            } else {
-                if (j >= midy)
-                    vec->y = (j - midy)*ph;
-                else
-                    vec->y = -((midy - j)*ph);
-            }
+            if constexpr (even_x)
+                vec->x = (i - midx_m_0p5)*pw;
+            else
+                vec->x = (i - ((long double) midx))*pw;
+            if constexpr (even_y)
+                vec->y = (j - midy_m_0p5)*ph;
+            else
+                vec->y = (j - ((long double) midy))*ph;
         }
 #ifndef __CUDACC__
         template <bool square_sym, bool even_x, bool even_y>
@@ -417,6 +407,7 @@ namespace diff {
                     *(diffalloc<T>::data + diffalloc<T>::pix_offset(high_x, high_y)) = intensity;
                     offset = counter++;
                     c.y = offset/diffalloc<T>::nw;
+                    // sleep(3);
                 }
             } else {
                 while (offset < diffalloc<T>::np) {
@@ -443,14 +434,32 @@ namespace diff {
             if (maxy > max_ydepth)
                 max_ydepth = maxy;
         }
-        void prog_thread(unsigned ptime) {
+        void prog_thread(unsigned ptime, bool is_sq_sym = false) {
             char _c = isatty(STDOUT_FILENO) ? '\r' : '\n';
-            uint64_t offset = counter.load();
-            while (offset < diffalloc<T>::np) {
-                printf("%.2Lf%% complete%c", (((long double) offset)/diffalloc<T>::np)*100.0l, _c);
-                fflush(stdout);
-                sleep(ptime);
-                offset = counter.load();
+            uint64_t offset;
+            if (is_sq_sym) {
+                const uint64_t ncpix = this->xsym_lim*this->ysym_lim; // number of actual pixels computed
+                offset = counter.load() - 1;
+                coord c = diffalloc<T>::pix_coords(offset);
+                uint64_t ncounter = std::min(c.x, this->xsym_lim) + c.y*this->xsym_lim;
+                while (ncounter < ncpix) {
+                    // printf("ncounter: %zu, ncpix: %zu, c.x: %zu, c.y: %zu, offset: %zu\n",
+                    //     ncounter, ncpix, c.x, c.y, offset);
+                    printf("%.2Lf%% complete%c", (((long double) ncounter)/ncpix)*100.0l, _c);
+                    fflush(stdout);
+                    sleep(ptime);
+                    offset = counter.load() - 1;
+                    c = diffalloc<T>::pix_coords(offset);
+                    ncounter = std::min(c.x, this->xsym_lim) + c.y*this->xsym_lim;
+                }
+            } else {
+                offset = counter.load() - 1;
+                while (offset < diffalloc<T>::np) {
+                    printf("%.2Lf%% complete%c", (((long double) offset)/diffalloc<T>::np)*100.0l, _c);
+                    fflush(stdout);
+                    sleep(ptime);
+                    offset = counter.load() - 1;
+                }
             }
             printf("100.00%% complete.\n");
         }
@@ -554,6 +563,8 @@ namespace diff {
                                                  reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
                     }
                 }
+                if (ptime)
+                    std::thread{&diffsim<T>::prog_thread, this, ptime, true}.join();
             } else {
                 if (!(diffalloc<T>::nw % 2)) {
                     if (!(diffalloc<T>::nh % 2)) {
@@ -576,9 +587,9 @@ namespace diff {
                                                  reltol_y, ptol_y, mdepth_y, abstol_x, reltol_x, ptol_x, mdepth_x);
                     }
                 }
+                if (ptime)
+                    std::thread{&diffsim<T>::prog_thread, this, ptime, false}.join();
             }
-            if (ptime)
-                std::thread{&diffsim<T>::prog_thread, this, ptime}.join();
             for (std::thread &t : threads)
                 t.join();
             counter.store(0);
