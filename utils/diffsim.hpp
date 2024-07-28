@@ -321,9 +321,10 @@ namespace diff {
 #endif
         uint64_t max_xdepth{(uint64_t) -1};
         uint64_t max_ydepth{(uint64_t) -1};
+        template <bool even_x, bool even_y>
         HOST_DEVICE void pix_to_pos(vector<T> *vec, uint64_t i, uint64_t j) {
             // I have taken this approach (rather than previously starting from (x_0,y_0) to ensure symmetry
-            if (!(diffalloc<T>::nw % 2)) {
+            if constexpr (even_x) {
                 if (i >= midx)
                     vec->x = (i - midx + 0.5l)*pw;
                 else
@@ -334,7 +335,7 @@ namespace diff {
                 else
                     vec->x = -((midx - i)*pw);
             }
-            if (!(diffalloc<T>::nh % 2)) {
+            if constexpr (even_y) {
                 if (j >= midy)
                     vec->y = (j - midy + 0.5l)*ph;
                 else
@@ -347,6 +348,7 @@ namespace diff {
             }
         }
 #ifndef __CUDACC__
+        template <bool square_sym, bool even_x, bool even_y>
         void diffract_thread(T abstol_y,
                              T reltol_y,
                              T ptol_y,
@@ -373,7 +375,14 @@ namespace diff {
             uint64_t maxy = 0;
             while (offset < diffalloc<T>::np) {
                 c = diffalloc<T>::pix_coords(offset); // I will find a more optimised way of doing this
-                this->pix_to_pos(&pos, c.x, c.y);
+                if constexpr (square_sym) {
+                    if constexpr (even_x) {
+                        if (c.x >= this->midx) {
+
+                        }
+                    }
+                }
+                this->pix_to_pos<even_x, even_y>(&pos, c.x, c.y);
                 *(diffalloc<T>::data + offset) =
                         E0_to_intensity(diff::simpdqr<T, gtd::complex<T>, decltype(integrand),
                                 decltype(ap->gfunc()), decltype(ap->hfunc())>
