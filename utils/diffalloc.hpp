@@ -22,7 +22,7 @@ namespace diff {
         uint64_t nh{}; // height of detector (in pixels)
         uint64_t np{}; // total number of pixels in detector
         uint64_t nb = np*sizeof(T); // total number of bytes allocated
-        gtd::mmapper mapper{np*sizeof(T)}; // gtd::mmapper object to take care of allocation using mmap
+        gtd::mmapper mapper{nb}; // gtd::mmapper object to take care of allocation using mmap
         T *data = (T*) mapper.get(); // pointer to data on host
 #ifdef __CUDACC__
         T *gdat{}; // pointer to data on device
@@ -43,6 +43,18 @@ namespace diff {
             CUDA_ERROR(cudaMemset(gdat, 0, nb)); // zeros-out all allocated GPU memory
 #endif
             mapper.zero(); // zeros-out all allocated memory
+        }
+        template <typename U>
+        explicit diffalloc(const diffalloc<U> &other) : nw{other.nw}, nh{other.nh}, np{other.np} {
+            if constexpr (std::same_as<U, T>) {
+                gtd::memcopy(this->data, other.data, this->nb);
+            } else {
+                T *tptr = this->data;
+                U *optr = other.data;
+                uint64_t counter = this->np;
+                while (counter --> 0)
+                    *tptr++ = (T) *optr++;
+            }
         }
         explicit diffalloc(const char *dttr_path) {
             this->from_dttr(dttr_path);

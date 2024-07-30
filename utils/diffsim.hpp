@@ -138,6 +138,8 @@ namespace diff {
     public:
         HOST_DEVICE aperture(uint32_t ID, T _ya, T _yb) : id{ID}, ya{_ya}, yb{_yb} {} //, gfunc{_gfunc}, hfunc{_hfunc}{}
         HOST_DEVICE aperture(const aperture<T> &other) : id{other.id}, ya{other.ya}, yb{other.yb} {}
+        template <gtd::numeric U> requires (std::is_convertible<U, T>::value)
+        HOST_DEVICE explicit aperture(const aperture<U> &other) : id{other.id}, ya{(T) other.ya}, yb{(T) other.yb} {}
         virtual void write_ap_info(int) const = 0;
         virtual void read_ap_info(int, bool) = 0;
         virtual void gen_fpath(const dffr_info<T>&, const char*, std::string*) const = 0;
@@ -151,6 +153,7 @@ namespace diff {
         HOST_DEVICE virtual const functor<T> &hfunc() const noexcept = 0;
         HOST_DEVICE virtual T gfunc(const T&) const = 0;
         HOST_DEVICE virtual T hfunc(const T&) const = 0;
+        HOST_DEVICE virtual aperture<T> *clone() const = 0;
         virtual uint64_t obj_size() const noexcept = 0;
 #ifdef __CUDACC__
         DEVICE virtual aperture<T>* gpu_copy() const = 0;
@@ -216,6 +219,9 @@ namespace diff {
             this->read_ap_info(fd, skip_id);
         }
         HOST_DEVICE rectangle(const rectangle<T> &other) : aperture<T>{other}, xa{other.xa}, xb{other.xb} {}
+        template <gtd::numeric U> requires (std::is_convertible<U, T>::value)
+        HOST_DEVICE explicit rectangle(const rectangle<U> &other) :
+                                aperture<T>{other}, xa{(T) other.xa}, xb{(T) other.xb} {}
         HOST_DEVICE const functor<T> &gfunc() const noexcept override {
             return this->_gfunc;
         }
@@ -227,6 +233,9 @@ namespace diff {
         }
         HOST_DEVICE T hfunc(const T &val) const override {
             return this->_hfunc(val);
+        }
+        HOST_DEVICE aperture<T> *clone() const override {
+            return new rectangle<T>{*this};
         }
 #ifdef __CUDACC__
         DEVICE virtual aperture<T>* gpu_copy() const {
@@ -507,6 +516,29 @@ namespace diff {
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
+        template <typename U> requires (std::is_floating_point_v<T>)
+        explicit diffsim(const diffsim<U> &other) :
+        diffalloc<T>{other}, lambda{other.lambda}, zdist{other.zdist}, xdttr{other.xdttr}, ydttr{other.ydttr},
+        k{other.k}, I0{other.I0}, E0{other.E0}, pw{other.pw}, ph{other.ph}, zdsq{other.zdsq},
+        outside_factor{other.outside_factor}, ap_ff{true}, midx{other.midx}, midy{other.midy},
+        midx_m_0p5{other.midx_m_0p5}, midy_m_0p5{other.midy_m_0p5} {
+            /* "xsym_lim" and "ysym_lim" need not be copied, as they are always dynamically set in "diffract". */
+            if constexpr (std::same_as<U, T>) {
+                this->ap = other.ap->clone();
+#ifdef __CUDACC__
+                this->ap_gpu = other.ap->gpu_copy();
+#endif
+            } else {
+                if (typeid(*other.ap) == typeid(rectangle<U>)) {
+                    this->ap = new rectangle<T>{*(dynamic_cast<rectangle<U>*>(other.ap))};
+#ifdef __CUDACC__
+                    this->ap_gpu = this->ap->gpu_copy();
+#endif
+                }
+                else
+                    throw std::invalid_argument{"Error: unknown aperture type.\n"};
+            }
+        }
         explicit diffsim(const char *path, bool just_info = true) {
             this->from_dffr(path, just_info);
         }
@@ -746,6 +778,33 @@ namespace diff {
                 throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
             return _end;
         }
+        template <typename U> requires (std::is_floating_point_v<U>)
+        void conv_dffr(const char *path, bool just_info = false) { // scrap this, opt for <U> constructor instead
+            if constexpr (std::same_as<T, U>) { // in the ctor, remember to correctly copy the aperture
+                this->from_dffr(path, just_info);
+                return;
+            }
+            diffsim<U> _sim{path, just_info};
+            diffalloc<T>::nw = _sim.nw;
+            diffalloc<T>::nh = _sim.nh;
+            diffalloc<T>::np = _sim.np;
+            diffalloc<T>::nb = _sim.np*sizeof(T);
+            this->lambda = _sim.lambda;
+            this->zdist = _sim.zdist;
+            this->xdttr = _sim.xdttr;
+            this->ydttr = _sim.ydttr;
+            this->k = (2*PI)/_sim.lambda;
+            this->I0 = _sim.I0;
+            this->E0 = intensity_to_E0(_sim.I0);
+            this->pw = _sim.xdttr/_sim.nw;
+            this->ph = _sim.ydttr/_sim.nh;
+            // this->x0 = 0.5*(this->pw - info.w);
+            // this->y0 = 0.5*(this->ph - info.l);
+            this->zdsq = _sim.zdsq;
+            this->outside_factor = (gtd::complex<T>::m_imunit*_sim.zdist*this->E0)/_sim.lambda;
+            this->midx = _sim.nw/2;
+            this->midy = _sim.nh/2;
+        }
         uint64_t from_dffr(const char *path, bool just_info = false) {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
@@ -796,6 +855,8 @@ namespace diff {
             if (ap_id == rectangle<T>::rc_id) {
                 if (buff.st_size < (psize = sizeof(dffr_info<T>) + rectangle<T>::ap_info_nb()))
                     throw invalid_dffr_format{"Error: insufficient file size for rectangular aperture.\n"};
+                if (ap_ff)
+                    delete this->ap;
                 this->ap = new rectangle<T>{fd, true}; // skip ID, since already read
                 ap_ff = true;
             } else {
@@ -838,7 +899,11 @@ namespace diff {
             this->outside_factor = (gtd::complex<T>::m_imunit*info.zd*this->E0)/info.lam;
             this->midx = info.nx/2;
             this->midy = info.ny/2;
-            return psize;
+            this->midx_m_0p5 = this->midx - 0.5l;
+            this->midy_m_0p5 = this->midy - 0.5l;
+            this->max_xdepth = (uint64_t) -1;
+            this->max_ydepth = (uint64_t) -1;
+            return psize; // am I not forgetting to add on the number of bytes of the array read?
         }
         ~diffsim() {
             if (ap_ff)

@@ -24,7 +24,7 @@ min_tol=$(echo "e($l_max*l(10))" | bc -l)
 tol_cut="0.000000000001" # cut-off tolerance below which the simulation switches to using `long double` values
 # tol_cutlog=$(echo "l($tol_cut)/l(10)" | bc -l)
 
-lams="-9.5"
+lams="-8.5"
 # lamb=$(echo "$lams + l($2)/l(10) - $l_b" | bc -l)
 
 gen_lt() {
@@ -32,7 +32,7 @@ gen_lt() {
   lamdiff=$(echo "$lams + l($2)/l(10) - $logz" | bc -l)
   if [ $(echo "$1 <= $z_b" | bc -l) == 1 ] && [ $(echo "$lamdiff >= $l_max" | bc -l) == 1 ]; then
     echo $min_tol
-    exit 0
+    return 0
   fi
   zdiff=$(echo "$l_max + 1.5*($l_b - $logz)" | bc -l)
   if [ $(echo "$zdiff <= $lamdiff" | bc -l) == 1 ]; then
@@ -40,7 +40,7 @@ gen_lt() {
   else
     echo "e($lamdiff*l(10))" | bc -l
   fi
-  exit 0
+  return 0
 }
 
 base_nlog="-8"
@@ -48,11 +48,11 @@ base_zd="0.00001"
 base_zlog=$(echo "l($base_zd)/l(10)" | bc -l)
 base_zdiff=$(echo "$base_nlog - $base_zlog" | bc -l)
 
-cutoff_time=3600 # maximum time given for a pattern to be generated (in seconds)
-cutoff_sleep=3
+cutoff_time=300 # maximum time given for a pattern to be generated (in seconds)
+cutoff_sleep=10
 min_prog=$(echo "($cutoff_sleep/$cutoff_time)*100.0" | bc -l)
 
-num_pats=10000 # number of patterns to generate
+num_pats=100000 # number of patterns to generate
 digs=$(echo "val=l($num_pats - 1)/l(10);scale=0;val/1 + 1;" | bc -l) # number of digits in file name
 counter=1
 
@@ -91,8 +91,9 @@ while [ $counter -le $num_pats ]; do
   fi
   zd=$(logn $zd_muln $zd_sigln)
   wl=$(echo "1.5*$zd" | bc -l) # physical width and length of detector (since the detector is square)
-  if [ $(echo "$wl <= 2*$apl" | bc -l) == 1 ]; then
-    continue;
+  one_p5_apl=$(echo "1.5*$apl" | bc -l)
+  if [ $(echo "$wl < $one_p5_apl" | bc -l) == 1 ]; then
+    wl=$one_p5_apl # have added this cut-off (rather than just disallowing it) to permit very near-field patterns
   fi
   xyb=$(echo "$apl/2" | bc -l) # upper x- and y-limits of the aperture (since the aperture is square)
   tol=$(gen_lt $zd $lam)

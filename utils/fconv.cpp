@@ -52,13 +52,66 @@ void convert_file(const char *from, const char *ddir, uint64_t *convf) {
     if (!S_ISREG(buff.st_mode)) {
         fprintf(stderr, "Error: file \"%s\" is not a regular file.\n", from);
     }
-
+    std::string opath = ddir;
+    if (!opath.ends_with('/'))
+        opath += '/';
+    opath += from;
+    try {
+        try {
+            diff::diffsim<long double> insim{from, false};
+            diff::diffsim<T>{insim}.to_dffr(opath);
+        } catch (const diff::invalid_dffr_format&) {
+            try {
+                diff::diffsim<double> insim{from, false};
+                diff::diffsim<T>{insim}.to_dffr(opath);
+            } catch (const diff::invalid_dffr_format&) {
+                try {
+                    diff::diffsim<float> insim{from, false};
+                    diff::diffsim<T>{insim}.to_dffr(opath);
+                } catch (const diff::invalid_dffr_format &_e) {
+                    std::cerr << "Error: file \"" << from << "\" could not be converted. Reason:\n"<< _e.what() << '\n';
+                    return;
+                }
+            }
+        }
+    } catch (const std::exception &_e) {
+        std::cerr << "Error: file \"" << from << "\" could not be converted. Reason:\n" << _e.what() << '\n';
+        return;
+    }
     ++*convf;
 }
 
 template <typename T> requires (std::is_floating_point_v<T>)
-void convert_directory(const char *dir, uint64_t *convf) {
-
+void convert_directory(const char *dirname, const char *ddir, uint64_t *convf) {
+    struct dirent *entry;
+    DIR *dir = opendir(dirname);
+    if (!dir) {
+        fprintf(stderr, "Error: could not open directory \"%s\".\n", dirname);
+        return;
+    }
+    struct stat buff{};
+    bool have_dot = false;
+    bool have_dot_dot = false;
+    while ((entry = readdir(dir))) {
+        if (!have_dot && gtd::str_eq(entry->d_name, ".")) {
+            have_dot = true;
+            continue;
+        }
+        if (!have_dot_dot && gtd::str_eq(entry->d_name, "..")) {
+            have_dot_dot = true;
+            continue;
+        }
+        if (entry->d_type == DT_DIR) {
+            // if (stat(entry->d_name, &buff) == -1) {
+            //     fprintf(stderr, "Error: could not obtain file information for \"%s\".\n", entry->d_name);
+            //     continue;
+            // }
+            convert_directory<T>(entry->d_name, ddir, convf);
+        } else {
+            convert_file<T>(entry->d_name, ddir, convf);
+        }
+    }
+    closedir(dir);
 }
 
 template <typename T> requires (std::is_floating_point_v<T>)
