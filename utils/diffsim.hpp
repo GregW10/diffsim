@@ -159,7 +159,10 @@ namespace diff {
         DEVICE virtual aperture<T>* gpu_copy() const = 0;
 #endif
         virtual ~aperture() = default;
-        friend class diffsim<T>;//, G, H>;
+        template <gtd::numeric>
+        friend class aperture;
+        template <gtd::numeric>
+        friend class diffsim;//, G, H>;
 #ifdef __CUDACC__
         template <gtd::numeric U>//, gtd::callret<U> F>
         friend __global__ void diffract_kernel(uint64_t _nw,
@@ -287,7 +290,10 @@ namespace diff {
             const char *_dat = oss.rdbuf()->view().data();
             out->assign(_dat, _dat + oss.tellp());
         }
-        friend class diffsim<T>;
+        template <gtd::numeric>
+        friend class rectangle;
+        template <gtd::numeric>
+        friend class diffsim;
     };
     template <gtd::numeric T>
     struct vector {
@@ -516,28 +522,58 @@ namespace diff {
                 dttr_width < 0 || dttr_length < 0)
                 throw invalid_diffparams{};
         }
-        template <typename U> requires (std::is_floating_point_v<T>)
-        explicit diffsim(const diffsim<U> &other) :
-        diffalloc<T>{other}, lambda{other.lambda}, zdist{other.zdist}, xdttr{other.xdttr}, ydttr{other.ydttr},
-        k{other.k}, I0{other.I0}, E0{other.E0}, pw{other.pw}, ph{other.ph}, zdsq{other.zdsq},
-        outside_factor{other.outside_factor}, ap_ff{true}, midx{other.midx}, midy{other.midy},
-        midx_m_0p5{other.midx_m_0p5}, midy_m_0p5{other.midy_m_0p5} {
+        diffsim(const diffsim<T> &other) :
+        diffalloc<T>{other},
+        lambda{other.lambda},
+        ap{other.ap->clone()},
+#ifdef __CUDACC__
+        ap_gpu{other.ap->gpu_copy()},
+#endif
+        zdist{other.zdist},
+        xdttr{other.xdttr},
+        ydttr{other.ydttr},
+        k{other.k},
+        I0{other.I0},
+        E0{other.E0},
+        pw{other.pw},
+        ph{other.ph},
+        zdsq{other.zdsq},
+        outside_factor{other.outside_factor},
+        ap_ff{true},
+        midx{other.midx},
+        midy{other.midy},
+        midx_m_0p5{other.midx_m_0p5},
+        midy_m_0p5{other.midy_m_0p5} {
             /* "xsym_lim" and "ysym_lim" need not be copied, as they are always dynamically set in "diffract". */
-            if constexpr (std::same_as<U, T>) {
-                this->ap = other.ap->clone();
+        }
+        template <gtd::numeric U> requires (std::is_floating_point_v<T>)
+        explicit diffsim(const diffsim<U> &other) :
+        diffalloc<T>{other},
+        lambda{(T) other.lambda},
+        zdist{(T) other.zdist},
+        xdttr{(T) other.xdttr},
+        ydttr{(T) other.ydttr},
+        k{(T) other.k},
+        I0{(T) other.I0},
+        E0{(T) other.E0},
+        pw{(T) other.pw},
+        ph{(T) other.ph},
+        zdsq{(T) other.zdsq},
+        outside_factor{other.outside_factor},
+        ap_ff{true},
+        midx{other.midx},
+        midy{other.midy},
+        midx_m_0p5{other.midx_m_0p5},
+        midy_m_0p5{other.midy_m_0p5} {
+            /* "xsym_lim" and "ysym_lim" need not be copied, as they are always dynamically set in "diffract". */
+            if (typeid(*other.ap) == typeid(rectangle<U>)) {
+                this->ap = new rectangle<T>{*(dynamic_cast<const rectangle<U>*>(other.ap))};
 #ifdef __CUDACC__
-                this->ap_gpu = other.ap->gpu_copy();
+                this->ap_gpu = this->ap->gpu_copy();
 #endif
-            } else {
-                if (typeid(*other.ap) == typeid(rectangle<U>)) {
-                    this->ap = new rectangle<T>{*(dynamic_cast<rectangle<U>*>(other.ap))};
-#ifdef __CUDACC__
-                    this->ap_gpu = this->ap->gpu_copy();
-#endif
-                }
-                else
-                    throw std::invalid_argument{"Error: unknown aperture type.\n"};
             }
+            else
+                throw std::invalid_argument{"Error: unknown aperture type.\n"};
         }
         explicit diffsim(const char *path, bool just_info = true) {
             this->from_dffr(path, just_info);
@@ -944,6 +980,8 @@ namespace diff {
                                                U ptol_x,
                                                uint64_t mdepth_x);
 #endif
+        template <gtd::numeric U> requires (std::is_floating_point_v<T>)
+        friend class diffsim;
     };
 #ifdef __CUDACC__
     template <gtd::numeric T>//, gtd::callret<T> F>

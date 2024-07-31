@@ -44,17 +44,16 @@ namespace diff {
 #endif
             mapper.zero(); // zeros-out all allocated memory
         }
-        template <typename U>
+        diffalloc(const diffalloc<T> &other) : nw{other.nw}, nh{other.nh}, np{other.np} {
+            gtd::memcopy(this->data, other.data, this->nb);
+        }
+        template <gtd::numeric U>
         explicit diffalloc(const diffalloc<U> &other) : nw{other.nw}, nh{other.nh}, np{other.np} {
-            if constexpr (std::same_as<U, T>) {
-                gtd::memcopy(this->data, other.data, this->nb);
-            } else {
-                T *tptr = this->data;
-                U *optr = other.data;
-                uint64_t counter = this->np;
-                while (counter --> 0)
-                    *tptr++ = (T) *optr++;
-            }
+            T *tptr = this->data;
+            U *optr = other.data;
+            uint64_t counter = this->np;
+            while (counter --> 0)
+                *tptr++ = (T) *optr++;
         }
         explicit diffalloc(const char *dttr_path) {
             this->from_dttr(dttr_path);
@@ -200,6 +199,8 @@ namespace diff {
             cudaFree(gdat); // no error handling, as I should not be throwing inside a destructor!
 #endif
         }
+        template <gtd::numeric U>
+        friend class diffalloc;
     };
 }
 #endif
