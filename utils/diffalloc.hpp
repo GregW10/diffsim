@@ -84,6 +84,10 @@ namespace diff {
         uint64_t dttr_fsize() const noexcept {
             return 28 + this->nb;
         }
+        void allocate() {
+            this->data = this->mapper.reset(this->nb);
+            // do GPU stuff
+        }
         uint64_t zmem(bool just_data = true) noexcept {
             if (!just_data)
                 return this->mapper.zero();

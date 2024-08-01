@@ -101,7 +101,7 @@ const char *get_dirname(int ac, char **av, int *indices) {
     } else {
         struct stat buff{};
         if (stat(dname, &buff) == -1) {
-            fprintf(stderr, "Error: could not obtain file information for \"%s\".\n", dname);
+            fprintf(stderr, "Error: could not obtain information for target directory \"%s\".\n", dname);
             exit(1);
         }
         if (!S_ISDIR(buff.st_mode)) {
@@ -130,13 +130,13 @@ void convert_file(const char *from, const char *ddir, uint64_t *convf) {
         fprintf(stderr, "Error: file \"%s\" is not a regular file.\n", from);
         return;
     }
+    if (only_dffr)
+        if (!gtd::endswith(from, ".dffr"))
+            return;
     std::string opath = ddir;
     if (!opath.ends_with('/'))
         opath += '/';
-    // opath += from;
     rand_fname(&opath);
-    std::cout << "Attempting to create: " << opath << std::endl;
-    std::cout << "Attempting to read: " << from << std::endl;
     try {
         try {
             diff::diffsim<long double> insim{from, false};
@@ -150,7 +150,8 @@ void convert_file(const char *from, const char *ddir, uint64_t *convf) {
                     diff::diffsim<float> insim{from, false};
                     diff::diffsim<T>{insim}.to_dffr(opath);
                 } catch (const diff::invalid_dffr_format &_e) {
-                    std::cerr << "Error: file \"" << from << "\" could not be converted. Reason:\n"<< _e.what() << '\n';
+                    std::cerr << "Error: file \"" << from << "\" could not be converted due to invalid file format. "
+                                                             "Reason:\n" << _e.what() << '\n';
                     return;
                 }
             }
@@ -164,13 +165,17 @@ void convert_file(const char *from, const char *ddir, uint64_t *convf) {
 
 template <typename T> requires (std::is_floating_point_v<T>)
 bool convert_directory(const char *dirname, const char *ddir, uint64_t *convf, bool have_ddir) {
+    char cwd[PATH_MAX];
+    if (!getcwd(cwd, PATH_MAX)) {
+        fprintf(stderr, "Error: could not obtain current working directory.\n");
+        exit(1);
+    }
     struct dirent *entry;
     DIR *dir = opendir(dirname);
     if (!dir) {
         fprintf(stderr, "Error: could not open directory \"%s\".\n", dirname);
         return false;
     }
-    // GETCWD AND THEN RETURN TO THAT AT THE END OF THE FUNCTION!!!!
     if (chdir(dirname) == -1) {
         closedir(dir);
         fprintf(stderr, "Error: could not change working directory to \"%s\".\n", dirname);
@@ -178,7 +183,7 @@ bool convert_directory(const char *dirname, const char *ddir, uint64_t *convf, b
     }
     bool have_dot = false;
     bool have_dot_dot = false;
-    // bool have_ddir = false || have_ddir_parent;
+    struct stat sbuff{};
     while ((entry = readdir(dir))) {
         if (!have_dot && gtd::str_eq(entry->d_name, ".")) {
             have_dot = true;
@@ -188,7 +193,19 @@ bool convert_directory(const char *dirname, const char *ddir, uint64_t *convf, b
             have_dot_dot = true;
             continue;
         }
+        if (entry->d_type == DT_UNKNOWN) {
+            if (stat(entry->d_name, &sbuff) == -1) {
+                fprintf(stderr, "Error: could not obtain file info for file \"%s/%s\".\n", cwd, entry->d_name);
+                return false;
+            }
+            if (S_ISDIR(sbuff.st_mode))
+                goto isdir;
+            if (S_ISREG(sbuff.st_mode))
+                convert_file<T>(entry->d_name, ddir, convf);
+            continue;
+        }
         if (entry->d_type == DT_DIR) {
+            isdir:
             if (!have_ddir) {
                 char buff[PATH_MAX]{};
                 if (realpath(entry->d_name, buff) == nullptr) {
@@ -200,20 +217,19 @@ bool convert_directory(const char *dirname, const char *ddir, uint64_t *convf, b
                     continue;
                 }
             }
-            // if (stat(entry->d_name, &buff) == -1) {
-            //     fprintf(stderr, "Error: could not obtain file information for \"%s\".\n", entry->d_name);
-            //     continue;
-            // }
-            if (convert_directory<T>(entry->d_name, ddir, convf, have_ddir)) {
-                if (chdir("..") == -1) {
-                    fprintf(stderr, "Error: could not move up to parent directory.\n");
-                    exit(1);
-                }
-            }
-        } else
+            convert_directory<T>(entry->d_name, ddir, convf, have_ddir);
+            continue;
+        }
+        if (entry->d_type == DT_REG) {
+            isreg:
             convert_file<T>(entry->d_name, ddir, convf);
+        }
     }
     closedir(dir);
+    if (chdir(cwd) == -1) {
+        fprintf(stderr, "Error: could not change working directory back to \"%s\".\n", cwd);
+        exit(1);
+    }
     return true;
 }
 
@@ -229,9 +245,9 @@ void convert_files(int argc, char **argv) {
         fprintf(stderr, "Error: could not obtain fully resolved pathname for target directory \"%s\".\n", ddir);
         exit(1);
     }
+    printf("Target directory: \"%s\".\n", ddir_full);
     uint64_t convf = 0;
     while (argc --> 0) {
-        // std::cout << "*argv: " << *argv << std::endl;
         if (argc == indices[0] || argc == indices[1]) {
             argv += 2;
             --argc;
@@ -242,20 +258,7 @@ void convert_files(int argc, char **argv) {
             continue;
         }
         convert_file<T>(*argv++, ddir_full, &convf);
-    } /*
-    if (endptr) {
-        while (argc --> 0) {
-            if (endptr == argv) {
-                argv += 2;
-                --argc;
-                continue;
-            }
-            convert_file<T>(*argv++, ddir_full, &convf);
-        }
     }
-    else
-        while (argc --> 0)
-            convert_file<T>(*argv++, ddir_full, &convf); */
     printf("Total number of files converted: %" PRIu64 "\n", convf);
 }
 

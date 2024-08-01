@@ -575,8 +575,8 @@ namespace diff {
             else
                 throw std::invalid_argument{"Error: unknown aperture type.\n"};
         }
-        explicit diffsim(const char *path, bool just_info = true) {
-            this->from_dffr(path, just_info);
+        explicit diffsim(const char *path, bool just_info = true, bool alloc = true) {
+            this->from_dffr(path, just_info, alloc);
         }
         uint64_t max_xrecdepth() const noexcept {
             return this->max_xdepth;
@@ -596,6 +596,8 @@ namespace diff {
                       unsigned int num_threads = 0,
                       unsigned ptime = 1) {
             // be able to return max_depth overall
+            if (!diffalloc<T>::data)
+                diffalloc<T>::allocate(); // remember to put in GPU equivalent later
             static const unsigned int numt = std::thread::hardware_concurrency();
             this->max_xdepth = 0;
             this->max_ydepth = 0;
@@ -788,6 +790,55 @@ namespace diff {
             CUDA_ERROR(cudaDeviceSynchronize());
         }
 #endif
+        template <typename U> requires (std::is_floating_point_v<U>)
+        friend std::ostream &operator<<(std::ostream &os, const diffsim<U> &_sim) {
+            if (typeid(*(_sim.ap)) == typeid(rectangle<T>)) {
+                T xa = _sim.ap->gfunc();
+                T xb = _sim.ap->hfunc();
+                return os << "Diffraction simulation with the following parameters:"
+                     "\n\tAperture lower x-limit = " << xa                  << " m"
+                     "\n\tAperture upper x-limit = " << xb                  << " m"
+                     "\n\tAperture lower y-limit = " << _sim.ap->ya         << " m"
+                     "\n\tAperture upper y-limit = " << _sim.ap->yb         << " m"
+                     "\n\tAperture x-length      = " << (xb - xa)           << " m"
+                     "\n\tAperture y-length      = " << (_sim.yb - _sim.ya) << " m"
+                     "\n\tWavelength of light    = " << _sim.lambda         << " m"
+                     "\n\tDistance to detector   = " << _sim.zdist          << " m"
+                     "\n\tWidth of detector      = " << _sim.xdttr          << " m"
+                     "\n\tLength of detector     = " << _sim.ydttr          << " m"
+                     "\n\tDetector x-resolution  = " << _sim.nw             <<
+                     "\n\tDetector y-resolution  = " << _sim.nh             <<
+                     "\n\tLight intensity        = " << _sim.I0             << " W/m^2";
+            }
+            return os << "Diffraction simulation with the following parameters:"
+                     "\n\tAperture lower x-limit = " << "(variable)"
+                     "\n\tAperture upper x-limit = " << "(variable)"
+                     "\n\tAperture lower y-limit = " << _sim.ap->ya         << " m"
+                     "\n\tAperture upper y-limit = " << _sim.ap->yb         << " m"
+                     "\n\tAperture x-length      = " << "(variable)"
+                     "\n\tAperture y-length      = " << "(variable)"
+                     "\n\tWavelength of light    = " << _sim.lambda         << " m"
+                     "\n\tDistance to detector   = " << _sim.zdist          << " m"
+                     "\n\tWidth of detector      = " << _sim.xdttr          << " m"
+                     "\n\tLength of detector     = " << _sim.ydttr          << " m"
+                     "\n\tDetector x-resolution  = " << _sim.nw             <<
+                     "\n\tDetector y-resolution  = " << _sim.nh             <<
+                     "\n\tLight intensity        = " << _sim.I0             << " W/m^2";
+        }
+    protected:
+        class file_descriptor {
+            int _fd;
+        public:
+            explicit file_descriptor(int fd) : _fd{fd} {}
+            void dont_close() noexcept {
+                this->_fd = -1;
+            }
+            ~file_descriptor() {
+                if (this->_fd != -1)
+                    close(this->_fd);
+            }
+        };
+    public:
         off_t to_dffr(std::string &path) const {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
@@ -804,17 +855,19 @@ namespace diff {
             int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
             if (fd == -1)
                 throw std::ios_base::failure{"Error: could not open .dffr file.\n"};
+            file_descriptor file_d{fd};
             if (gtd::write_all(fd, &info, sizeof(dffr_info<T>)) != sizeof(dffr_info<T>))
                 throw std::ios_base::failure{"Error: could not write .dffr file information.\n"};
             this->ap->write_ap_info(fd);
             if (gtd::write_all(fd, this->data, this->nb) != this->nb)
                 throw std::ios_base::failure{"Error: could not write 2D intensity data array to .dffr file.\n"};
             off_t _end = lseek(fd, 0, SEEK_CUR);
+            file_d.dont_close();
             if (close(fd) == -1)
                 throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
             return _end;
         }
-        template <typename U> requires (std::is_floating_point_v<U>)
+        /* template <typename U> requires (std::is_floating_point_v<U>)
         void conv_dffr(const char *path, bool just_info = false) { // scrap this, opt for <U> constructor instead
             if constexpr (std::same_as<T, U>) { // in the ctor, remember to correctly copy the aperture
                 this->from_dffr(path, just_info);
@@ -840,8 +893,8 @@ namespace diff {
             this->outside_factor = (gtd::complex<T>::m_imunit*_sim.zdist*this->E0)/_sim.lambda;
             this->midx = _sim.nw/2;
             this->midy = _sim.nh/2;
-        }
-        uint64_t from_dffr(const char *path, bool just_info = false) {
+        } */
+        uint64_t from_dffr(const char *path, bool just_info = false, bool alloc = true) {
             static_assert(sizeof(T) <= ((uint32_t) -1), "\"sizeof(T)\" too large.\n"); // would never happen
             static_assert(LDBL_MANT_DIG <= ((uint32_t) -1), "\"LDBL_MANT_DIG\" too large.\n"); // would never happen
             struct stat buff{};
@@ -852,8 +905,12 @@ namespace diff {
             if (buff.st_size < sizeof(dffr_info<T>) + sizeof(uint32_t))
                 throw invalid_dffr_format{"Error: .dffr file size too small.\n"};
             int fd = open(path, O_RDONLY);
-            if (fd == -1)
+            if (fd == -1) {
+                // fprintf(stderr, "Attempted to open \"%s\", but failed.\n", path);
+                // perror("Reason");
                 throw std::ios_base::failure{"Error: could not open .dffr file.\n"};
+            }
+            file_descriptor file_d{fd};
             dffr_info<T> info;
             if (gtd::read_all(fd, &info, sizeof(dffr_info<T>)) != sizeof(dffr_info<T>))
                 throw std::ios_base::failure{"Error: could not read .dffr file information.\n"};
@@ -903,9 +960,14 @@ namespace diff {
             diffalloc<T>::nb = diffalloc<T>::np*sizeof(T);
             // psize += info.nx*info.ny*sizeof(T);
             if (just_info) {
-                diffalloc<T>::mapper.reset(diffalloc<T>::nb);
-                diffalloc<T>::data = (T*) diffalloc<T>::mapper.get();
-                diffalloc<T>::zmem();
+                if (alloc) {
+                    diffalloc<T>::mapper.reset(diffalloc<T>::nb);
+                    diffalloc<T>::data = (T*) diffalloc<T>::mapper.get();
+                    diffalloc<T>::zmem();
+                } else {
+                    diffalloc<T>::mapper.reset();
+                    diffalloc<T>::data = nullptr;
+                }
                 goto rest;
             }
             if (buff.st_size != psize + diffalloc<T>::nb)
@@ -916,6 +978,7 @@ namespace diff {
                 throw std::ios_base::failure{"Error: could not read 2D intensity data array from .dffr file.\n"};
             // off_t _end = lseek(fd, 0, SEEK_CUR);
             rest:
+            file_d.dont_close();
             if (close(fd) == -1)
                 throw std::ios_base::failure{"Error: could not close .dffr file.\n"};
             diffalloc<T>::nw = info.nx;
