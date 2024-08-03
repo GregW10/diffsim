@@ -197,6 +197,8 @@ namespace diff {
                                                U ptol_x,
                                                uint64_t mdepth_x);
 #endif
+        template <typename U> requires (std::is_floating_point_v<U>)
+        friend std::ostream &operator<<(std::ostream&, const diffsim<U>&);
     };
     template <gtd::numeric T>//, gtd::callret<T> G, gtd::callret<T> H>
     class rectangle : public aperture<T> {//, T (*)(const T&), T (*)(const T&)> {
@@ -204,13 +206,16 @@ namespace diff {
         T xa;
         T xb;
         class rc_functor : public functor<T> {
-            T val;
+            T val{};
         public:
+            HOST_DEVICE rc_functor() = default;
             HOST_DEVICE rc_functor(const rc_functor &other) : val{other.val} {}
             HOST_DEVICE explicit rc_functor(const T &v) : val{v} {}
             HOST_DEVICE inline T operator()(const T&) const override {
                 return this->val;
             }
+            template <gtd::numeric>
+            friend class rectangle;
         };
         rc_functor _gfunc{xa};
         rc_functor _hfunc{xb};
@@ -218,7 +223,7 @@ namespace diff {
         static constexpr uint32_t rc_id = 0;
         // using aperture<T, G, H>::aperture;
         HOST_DEVICE rectangle(T _xa, T _xb, T _ya, T _yb) : aperture<T>{rc_id, _ya, _yb}, xa{_xa}, xb{_xb} {}
-        HOST_DEVICE explicit rectangle(int fd, bool skip_id = false) : aperture<T>{rc_id} {
+        HOST_DEVICE explicit rectangle(int fd, bool skip_id = false) : aperture<T>{rc_id}, _gfunc{}, _hfunc{} {
             this->read_ap_info(fd, skip_id);
         }
         HOST_DEVICE rectangle(const rectangle<T> &other) : aperture<T>{other}, xa{other.xa}, xb{other.xb} {}
@@ -278,6 +283,8 @@ namespace diff {
             this->xb = vals[1];
             this->ya = vals[2];
             this->yb = vals[3];
+            this->_gfunc.val = this->xa;
+            this->_hfunc.val = this->xb;
         }
         void gen_fpath(const dffr_info<T> &inf, const char *suffix, std::string *out) const {
             if (!out)
@@ -481,6 +488,8 @@ namespace diff {
 #endif
     public:
         static constexpr uint64_t def_mdepth = 52;
+        static constexpr const char *fp_str = std::is_same_v<T, long double> ? "long double" :
+                                             (std::is_same_v<T, double> ? "double" : "float");
         diffsim() = delete;
         diffsim(const T &wavelength,
                 const aperture<T> *_aperture,
@@ -790,41 +799,6 @@ namespace diff {
             CUDA_ERROR(cudaDeviceSynchronize());
         }
 #endif
-        template <typename U> requires (std::is_floating_point_v<U>)
-        friend std::ostream &operator<<(std::ostream &os, const diffsim<U> &_sim) {
-            if (typeid(*(_sim.ap)) == typeid(rectangle<T>)) {
-                T xa = _sim.ap->gfunc();
-                T xb = _sim.ap->hfunc();
-                return os << "Diffraction simulation with the following parameters:"
-                     "\n\tAperture lower x-limit = " << xa                  << " m"
-                     "\n\tAperture upper x-limit = " << xb                  << " m"
-                     "\n\tAperture lower y-limit = " << _sim.ap->ya         << " m"
-                     "\n\tAperture upper y-limit = " << _sim.ap->yb         << " m"
-                     "\n\tAperture x-length      = " << (xb - xa)           << " m"
-                     "\n\tAperture y-length      = " << (_sim.yb - _sim.ya) << " m"
-                     "\n\tWavelength of light    = " << _sim.lambda         << " m"
-                     "\n\tDistance to detector   = " << _sim.zdist          << " m"
-                     "\n\tWidth of detector      = " << _sim.xdttr          << " m"
-                     "\n\tLength of detector     = " << _sim.ydttr          << " m"
-                     "\n\tDetector x-resolution  = " << _sim.nw             <<
-                     "\n\tDetector y-resolution  = " << _sim.nh             <<
-                     "\n\tLight intensity        = " << _sim.I0             << " W/m^2";
-            }
-            return os << "Diffraction simulation with the following parameters:"
-                     "\n\tAperture lower x-limit = " << "(variable)"
-                     "\n\tAperture upper x-limit = " << "(variable)"
-                     "\n\tAperture lower y-limit = " << _sim.ap->ya         << " m"
-                     "\n\tAperture upper y-limit = " << _sim.ap->yb         << " m"
-                     "\n\tAperture x-length      = " << "(variable)"
-                     "\n\tAperture y-length      = " << "(variable)"
-                     "\n\tWavelength of light    = " << _sim.lambda         << " m"
-                     "\n\tDistance to detector   = " << _sim.zdist          << " m"
-                     "\n\tWidth of detector      = " << _sim.xdttr          << " m"
-                     "\n\tLength of detector     = " << _sim.ydttr          << " m"
-                     "\n\tDetector x-resolution  = " << _sim.nw             <<
-                     "\n\tDetector y-resolution  = " << _sim.nh             <<
-                     "\n\tLight intensity        = " << _sim.I0             << " W/m^2";
-        }
     protected:
         class file_descriptor {
             int _fd;
@@ -1043,9 +1017,48 @@ namespace diff {
                                                U ptol_x,
                                                uint64_t mdepth_x);
 #endif
-        template <gtd::numeric U> requires (std::is_floating_point_v<T>)
+        template <gtd::numeric U> requires (std::is_floating_point_v<U>)
         friend class diffsim;
+        template <typename U> requires (std::is_floating_point_v<U>)
+        friend std::ostream &operator<<(std::ostream&, const diffsim<U>&);
     };
+    template <typename U> requires (std::is_floating_point_v<U>)
+    std::ostream &operator<<(std::ostream &os, const diffsim<U> &_sim) {
+            if (typeid(*(_sim.ap)) == typeid(rectangle<U>)) {
+                U xa = _sim.ap->gfunc(_sim.ap->ya);
+                U xb = _sim.ap->hfunc(_sim.ap->yb);
+                return os << "Diffraction simulation with the following parameters:"
+                     "\n\tFloating-point type    = " << diffsim<U>::fp_str          <<
+                     "\n\tAperture lower x-limit = " << xa                          << " m"
+                     "\n\tAperture upper x-limit = " << xb                          << " m"
+                     "\n\tAperture lower y-limit = " << _sim.ap->ya                 << " m"
+                     "\n\tAperture upper y-limit = " << _sim.ap->yb                 << " m"
+                     "\n\tAperture x-length      = " << (xb - xa)                   << " m"
+                     "\n\tAperture y-length      = " << (_sim.ap->yb - _sim.ap->ya) << " m"
+                     "\n\tWavelength of light    = " << _sim.lambda                 << " m"
+                     "\n\tDistance to detector   = " << _sim.zdist                  << " m"
+                     "\n\tWidth of detector      = " << _sim.xdttr                  << " m"
+                     "\n\tLength of detector     = " << _sim.ydttr                  << " m"
+                     "\n\tDetector x-resolution  = " << _sim.nw                     <<
+                     "\n\tDetector y-resolution  = " << _sim.nh                     <<
+                     "\n\tLight intensity        = " << _sim.I0                     << " W/m^2";
+            }
+            return os << "Diffraction simulation with the following parameters:"
+                     "\n\tFloating-point type    = " << diffsim<U>::fp_str          <<
+                     "\n\tAperture lower x-limit = " << "(variable)"
+                     "\n\tAperture upper x-limit = " << "(variable)"
+                     "\n\tAperture lower y-limit = " << _sim.ap->ya                 << " m"
+                     "\n\tAperture upper y-limit = " << _sim.ap->yb                 << " m"
+                     "\n\tAperture x-length      = " << "(variable)"
+                     "\n\tAperture y-length      = " << (_sim.ap->yb - _sim.ap->ya) << " m"
+                     "\n\tWavelength of light    = " << _sim.lambda                 << " m"
+                     "\n\tDistance to detector   = " << _sim.zdist                  << " m"
+                     "\n\tWidth of detector      = " << _sim.xdttr                  << " m"
+                     "\n\tLength of detector     = " << _sim.ydttr                  << " m"
+                     "\n\tDetector x-resolution  = " << _sim.nw                     <<
+                     "\n\tDetector y-resolution  = " << _sim.nh                     <<
+                     "\n\tLight intensity        = " << _sim.I0                     << " W/m^2";
+        }
 #ifdef __CUDACC__
     template <gtd::numeric T>//, gtd::callret<T> F>
     __global__ void diffract_kernel(uint64_t _nw,
