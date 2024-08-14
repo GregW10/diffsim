@@ -22,7 +22,10 @@ std::string *rand_fname(std::string *out) {
     uint64_t counter;
     unsigned char _t;
     auto end_it = taken_names.end();
+    goto start_do;
     do {
+        rand_name.clear();
+        start_do:
         counter = randlen;
         while (counter --> 0) {
             if ((_t = three(mersenne)) == 1)

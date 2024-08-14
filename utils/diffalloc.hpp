@@ -85,7 +85,7 @@ namespace diff {
             return 28 + this->nb;
         }
         void allocate() {
-            this->data = this->mapper.reset(this->nb);
+            this->data = (T*) this->mapper.reset(this->nb);
             // do GPU stuff
         }
         uint64_t zmem(bool just_data = true) noexcept {
