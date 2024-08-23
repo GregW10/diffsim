@@ -29,6 +29,14 @@ namespace diff {
     std::ostream &operator<<(std::ostream &os, const colour<T> &col) {
         return os << "(r=" << col.r << ",g=" << col.g << ",b=" << col.b << ')';
     }
+    template <typename T> requires (std::is_floating_point_v<T>)
+    colour<T> operator*(const T &scalar, const colour<T> &col) {
+        return {scalar*col.r, scalar*col.g, scalar*col.b};
+    }
+    template <typename T> requires (std::is_floating_point_v<T>)
+    colour<T> operator*(const colour<T> &col, const T &scalar) {
+        return {scalar*col.r, scalar*col.g, scalar*col.b};
+    }
     template <typename T = long double> requires (std::is_floating_point_v<T>)
     class colours final {
     public:
@@ -219,17 +227,20 @@ namespace diff {
     class cmaps {
     public:
         static inline const colourmap<T> grayscale{};
-        static inline const colourmap<T> bgr  = {{0.0l, colours<T>::blue},
-                                                 {0.5l, colours<T>::green},
-                                                 {1.0l, colours<T>::red}};
-        static inline const colourmap<T> gbw  = {{0.0l, colours<T>::green},
-                                                 {0.5l, colours<T>::blue},
-                                                 {1.0l, colours<T>::white}};
-        static inline const colourmap<T> gp   = {{0.0l, colours<T>::green},
-                                                 {1.0l, colours<T>::pink}};
-        static inline const colourmap<T> mono = {{0.0l, colours<T>::black},
-                                                 {.00392156862745098039l, colours<T>::white},
-                                                 {1.0l, colours<T>::white}};
+        static inline const colourmap<T> bgr    = {{0.0l, colours<T>::blue},
+                                                   {0.5l, colours<T>::green},
+                                                   {1.0l, colours<T>::red}};
+        static inline const colourmap<T> gbw    = {{0.0l, colours<T>::green},
+                                                   {0.5l, colours<T>::blue},
+                                                   {1.0l, colours<T>::white}};
+        static inline const colourmap<T> gp     = {{0.0l, colours<T>::green},
+                                                   {1.0l, colours<T>::pink}};
+        static inline const colourmap<T> nlgray = {{0.0l, colours<T>::black},
+                                                   {0.0001l, ((T) 0.1l)*colours<T>::white},
+                                                   {0.001l,  ((T) 0.2l)*colours<T>::white},
+                                                   {0.01l,   ((T) 0.5l)*colours<T>::white},
+                                                   {0.1l,    ((T) 0.9l)*colours<T>::white},
+                                                   {1.0l,               colours<T>::white}};
         static const std::map<std::string, colourmap<T>> all_cmaps;
     };
 #pragma pack(push, 1)
@@ -254,23 +265,23 @@ namespace diff {
     class diffimg : public diffsim<T> {
         // gtd::bmp bmp{diffalloc<T>::nw, diffalloc<T>::nh};
         // gtd::mmapper bmp{diffalloc<T>::nb};
-        std::pair<T, T> minmax_vals() const noexcept {
+        T max_val() const noexcept {
             T *ptr = diffalloc<T>::data;
             // std::cout << "*ptr: " << *ptr << std::endl;
-            T minv = *ptr;
+            // T minv = *ptr;
             T maxv = *ptr++;
             for (uint64_t i = 0; ++i < diffalloc<T>::np; ++ptr) {
                 // if (*ptr > 0.001)
                 //     std::cout << "*ptr: " << *ptr << std::endl;
                 if (*ptr > maxv) {
                     maxv = *ptr;
-                    continue;
+                    // continue;
                 }
-                if (*ptr < minv)
-                    minv = *ptr;
+                // if (*ptr < minv)
+                    // minv = *ptr;
             }
             // std::cout << "MINV: " << minv << ", MAXV: " << maxv << std::endl;
-            return {minv, maxv};
+            return maxv; // return {minv, maxv};
         }
         void add_bmp_metadata(const dffr_info<T> *inf, int fd) {
             /* constexpr static uint64_t sizeT = sizeof(T);
@@ -295,8 +306,8 @@ namespace diff {
             T *dptr = diffalloc<T>::data;
             // gtd::color color{};
             colour<T> col{};
-            auto [minv, maxv] = this->minmax_vals();
-            maxv -= minv;
+            T /* auto [minv, */ maxv /* ] */ = this->max_val(); // same as line below
+            /* maxv -= minv; */ // have changed this and below because I think (0,1] makes more sense
             // T range = maxv - minv;
             uint64_t wb = diffalloc<T>::nw*3;
             uint8_t rem = wb % 4; // row must end on 4-byte boundary:
@@ -316,7 +327,7 @@ namespace diff {
                     //     std::cout << "argument: " << (*dptr - minv)/maxv << std::endl;
                     // if (*dptr > 0.001)
                     //     std::cout << "here: " << *dptr << std::endl;
-                    col = cmap((*dptr++ - minv)/maxv);
+                    col = cmap((*dptr++ /* - minv */)/maxv); // need to think whether I really want [0,1] or (0,1]
                     // std::cout << col.r << ", " << col.g << ", " << col.b << std::endl;
                     cptr->r = (unsigned char) std::round(col.r*255.0l);
                     cptr->g = (unsigned char) std::round(col.g*255.0l);
@@ -392,9 +403,9 @@ template class diff::cmaps<long double>; */
 template <typename T> requires (std::is_floating_point_v<T>)
 inline const std::map<std::string, diff::colourmap<T>> diff::cmaps<T>::all_cmaps = {
         {"grayscale", diff::cmaps<T>::grayscale},
-        {"bgr", diff::cmaps<T>::bgr},
-        {"gbw", diff::cmaps<T>::gbw},
-        {"gp" , diff::cmaps<T>::gp },
-        {"mono", diff::cmaps<T>::mono}
+        {      "bgr", diff::cmaps<T>::bgr},
+        {      "gbw", diff::cmaps<T>::gbw},
+        {      "gp" , diff::cmaps<T>::gp },
+        {   "nlgray", diff::cmaps<T>::nlgray}
 };
 #endif
