@@ -161,7 +161,7 @@ namespace diff {
         virtual ~aperture() = default;
         template <gtd::numeric>
         friend class aperture;
-        template <gtd::numeric>
+        template <gtd::numeric U> requires (std::is_floating_point_v<U>)
         friend class diffsim;//, G, H>;
 #ifdef __CUDACC__
         template <gtd::numeric U>//, gtd::callret<U> F>
@@ -299,7 +299,7 @@ namespace diff {
         }
         template <gtd::numeric>
         friend class rectangle;
-        template <gtd::numeric>
+        template <gtd::numeric U> requires (std::is_floating_point_v<U>)
         friend class diffsim;
     };
     template <gtd::numeric T>
