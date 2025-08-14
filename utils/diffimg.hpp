@@ -227,6 +227,8 @@ namespace diff {
     class cmaps {
     public:
         static inline const colourmap<T> grayscale{};
+        static inline const colourmap<T>  gr    = {{0.0l, colours<T>::green},
+                                                   {1.0l, colours<T>::red}};
         static inline const colourmap<T> bgr    = {{0.0l, colours<T>::blue},
                                                    {0.5l, colours<T>::green},
                                                    {1.0l, colours<T>::red}};
@@ -250,8 +252,8 @@ namespace diff {
         uint16_t res1[2]{};
         uint32_t arr_offset = 54;
         uint32_t hsize = 40;
-        uint32_t width{};
-        uint32_t height{};
+         int32_t width{};
+         int32_t height{};
         uint16_t num_cpanes = 1;
         uint16_t bpp = 24;
         uint32_t res2[6]{};
